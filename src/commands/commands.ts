@@ -149,7 +149,11 @@ export function applyCommand(
       break
     }
     case 'resize-room':
-      scene.room = { ...scene.room, ...structuredClone(command.dimensions) }
+      scene.room = {
+        ...scene.room,
+        ...structuredClone(command.dimensions),
+        ...(command.preset === undefined ? {} : { preset: command.preset }),
+      }
       break
     case 'reparent-entity':
       reparent(scene, command.entityId, command.parentId)

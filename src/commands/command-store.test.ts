@@ -102,7 +102,11 @@ describe('CommandStore', () => {
       ],
       [
         'room resize',
-        { type: 'resize-room', dimensions: { width: 500, depth: 500, height: 500 } },
+        {
+          type: 'resize-room',
+          dimensions: { width: 500, depth: 500, height: 500 },
+          preset: null,
+        },
       ],
       ['reparent', { type: 'reparent-entity', entityId: 'two', parentId: 'one' }],
       ['group', { type: 'group-entities', group: entity('group'), entityIds: ['two'] }],
@@ -369,9 +373,11 @@ describe('CommandStore', () => {
     const result = store.execute({
       type: 'resize-room',
       dimensions: { width: 500, depth: 500, height: 500 },
+      preset: null,
     })
 
     expect(store.scene.entities).toEqual(entitiesBefore)
+    expect(store.scene.room.preset).toBeNull()
     expect(result.outOfBoundsEntityIds).toEqual(['outside'])
   })
 

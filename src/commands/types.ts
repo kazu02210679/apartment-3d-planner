@@ -8,6 +8,7 @@ import type {
   SceneDocument,
   Transform,
 } from '../domain/schema'
+import type { RoomPresetId } from '../domain/room-presets'
 
 export type SceneCommand =
   | { readonly type: 'add-entity'; readonly entity: Entity }
@@ -54,7 +55,11 @@ export type SceneCommand =
       readonly catalog?: CatalogReference
       readonly overrides?: JsonObject
     }
-  | { readonly type: 'resize-room'; readonly dimensions: RoomDimensions }
+  | {
+      readonly type: 'resize-room'
+      readonly dimensions: RoomDimensions
+      readonly preset?: RoomPresetId | null
+    }
   | {
       readonly type: 'reparent-entity'
       readonly entityId: string
