@@ -57,6 +57,28 @@ describe('transactional local persistence', () => {
     expect(adapter.getItem('test-scenes')).toBe(bytesBeforeFailure)
   })
 
+  it('returns typed not-found and recovery errors without mutating corrupt storage', () => {
+    const adapter = createMemoryStorage()
+    const storage = new SceneStorage(adapter, 'corrupt-scenes')
+
+    const missing = storage.reload()
+    expect(missing.ok).toBe(false)
+    if (!missing.ok) expect(missing.error.code).toBe('not-found')
+    expect(adapter.getItem('corrupt-scenes')).toBeNull()
+
+    const corrupt = JSON.stringify({
+      format: 'home-lab-scene-storage',
+      schemaVersion: 1,
+      current: '{bad',
+      lastKnownGood: '{also-bad',
+    })
+    adapter.setItem('corrupt-scenes', corrupt)
+    const recovered = storage.reload()
+    expect(recovered.ok).toBe(false)
+    if (!recovered.ok) expect(recovered.error.code).toBe('recovery-failed')
+    expect(adapter.getItem('corrupt-scenes')).toBe(corrupt)
+  })
+
   it('debounces and coalesces autosaves, reports failure, and recovers later', () => {
     vi.useFakeTimers()
     try {
@@ -84,6 +106,37 @@ describe('transactional local persistence', () => {
       expect(coordinator.flush().state).toBe('saved')
       expect(coordinator.getStatus().lastSuccessfulDigest).not.toBe(digestAfterFailure)
       coordinator.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('disposes pending work, flushes once immediately, and clears invalid schedules', () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = createMemoryStorage()
+      const storage = new SceneStorage(adapter)
+      const coordinator = createAutosaveCoordinator(storage, { debounceMs: 250 })
+      coordinator.schedule(makeScene('disposed'))
+      coordinator.dispose()
+      vi.advanceTimersByTime(1000)
+      expect(adapter.getItem('home-lab-scene')).toBeNull()
+
+      const flushCoordinator = createAutosaveCoordinator(storage, { debounceMs: 250 })
+      const setItem = vi.spyOn(adapter, 'setItem')
+      flushCoordinator.schedule(makeScene('flushed'))
+      expect(flushCoordinator.flush().state).toBe('saved')
+      expect(setItem).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(1000)
+      expect(setItem).toHaveBeenCalledTimes(1)
+
+      const invalidCoordinator = createAutosaveCoordinator(storage, { debounceMs: 250 })
+      invalidCoordinator.schedule(makeScene('will-not-write'))
+      invalidCoordinator.schedule({ invalid: true } as unknown as SceneDocument)
+      expect(invalidCoordinator.getStatus().state).toBe('error')
+      vi.advanceTimersByTime(1000)
+      expect(setItem).toHaveBeenCalledTimes(1)
+      setItem.mockRestore()
     } finally {
       vi.useRealTimers()
     }

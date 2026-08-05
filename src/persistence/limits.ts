@@ -1,11 +1,11 @@
 import type { SceneDocument } from '../domain/schema'
 
-export const MAX_INPUT_BYTES = 512 * 1024
-export const MAX_ENTITIES = 100
-export const MAX_CONNECTIONS = 100
-export const MAX_PORTS_PER_ENTITY = 32
-export const MAX_ENDPOINTS_PER_CONNECTION = 32
-export const MAX_JSON_DEPTH = 32
+export const MAX_INPUT_BYTES = 5 * 1024 * 1024
+export const MAX_ENTITIES = 2000
+export const MAX_CONNECTIONS = 5000
+export const MAX_PORTS_PER_ENTITY = 128
+export const MAX_ENDPOINTS_PER_CONNECTION = 128
+export const MAX_JSON_DEPTH = 64
 
 export interface SceneLimits {
   readonly maxEntities?: number
