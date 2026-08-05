@@ -1,0 +1,131 @@
+import { describe, expect, it } from 'vitest'
+
+import { createEmptyScene, resizeRoom } from './scene'
+import { type SceneDocument } from './schema'
+import { validateSceneInvariants } from './invariants'
+import { normalizeScene } from './normalize'
+
+const fixedTimestamp = '2026-08-06T00:00:00.000Z'
+
+function makeScene(): SceneDocument {
+  let nextId = 0
+
+  return createEmptyScene('6-tatami', {
+    idFactory: () => `invariant-id-${++nextId}`,
+    now: () => fixedTimestamp,
+  })
+}
+
+function makeEntity(
+  id: string,
+  position: { x: number; y: number; z: number },
+  parentId: string | null = null,
+): SceneDocument['entities'][number] {
+  return {
+    id,
+    kind: 'desk',
+    name: `Entity ${id}`,
+    parentId,
+    transform: {
+      position,
+      rotation: { x: 0, y: 0, z: 0 },
+    },
+    dimensions: { width: 100, depth: 100, height: 100 },
+    catalog: { itemId: 'desk.basic', revision: '1', extensions: {} },
+    overrides: { material: 'oak' },
+    ports: [
+      {
+        id: `${id}-power`,
+        name: 'Power',
+        kind: 'power',
+        position: { x: 0, y: 0, z: 0 },
+        extensions: {},
+      },
+    ],
+    properties: { wattage: 60 },
+    visible: true,
+    locked: false,
+    extensions: { source: 'test' },
+  }
+}
+
+describe('SceneDocument graph invariants', () => {
+  it('rejects duplicate IDs instead of making selection and connections ambiguous', () => {
+    const scene = makeScene()
+    scene.entities.push(makeEntity('duplicate-id', { x: 0, y: 500, z: 0 }))
+    scene.entities.push(makeEntity('duplicate-id', { x: 200, y: 500, z: 0 }))
+
+    expect(() => validateSceneInvariants(scene)).toThrow('duplicate-id')
+  })
+
+  it('rejects a missing parent instead of leaving an orphaned hierarchy reference', () => {
+    const scene = makeScene()
+    scene.entities.push(
+      makeEntity('child-id', { x: 0, y: 500, z: 0 }, 'missing-parent-id'),
+    )
+
+    expect(() => validateSceneInvariants(scene)).toThrow('missing-parent')
+  })
+
+  it('rejects parent cycles instead of allowing recursive scene traversal', () => {
+    const scene = makeScene()
+    scene.entities.push(makeEntity('parent-a', { x: 0, y: 500, z: 0 }, 'parent-b'))
+    scene.entities.push(makeEntity('parent-b', { x: 200, y: 500, z: 0 }, 'parent-a'))
+
+    expect(() => validateSceneInvariants(scene)).toThrow('parent-cycle')
+  })
+
+  it('rejects dangling connection ports instead of persisting an unresolvable endpoint', () => {
+    const scene = makeScene()
+    scene.entities.push(makeEntity('entity-a', { x: 0, y: 500, z: 0 }))
+    scene.entities.push(makeEntity('entity-b', { x: 200, y: 500, z: 0 }))
+    scene.connections.push({
+      id: 'connection-id',
+      endpoints: [
+        { entityId: 'entity-a', portId: 'entity-a-power' },
+        { entityId: 'entity-b', portId: 'missing-port-id' },
+      ],
+      kind: 'power',
+      properties: {},
+      extensions: {},
+    })
+
+    expect(() => validateSceneInvariants(scene)).toThrow('dangling-port')
+  })
+
+  it('normalizes equivalent documents deterministically without adding renderer state', () => {
+    const scene = makeScene()
+    scene.entities.push(makeEntity('entity-b', { x: 200, y: 500, z: 0 }))
+    scene.entities.push(makeEntity('entity-a', { x: 0, y: 500, z: 0 }))
+
+    const normalized = normalizeScene(scene)
+    const roundTripped = normalizeScene(JSON.parse(JSON.stringify(scene)))
+
+    expect(normalized.entities.map((entity) => entity.id)).toEqual([
+      'entity-a',
+      'entity-b',
+    ])
+    expect(normalized).toEqual(roundTripped)
+    expect(normalized).not.toHaveProperty('renderer')
+    expect(normalized).not.toHaveProperty('ui')
+  })
+
+  it('resizes only the room and returns IDs that are outside the new bounds', () => {
+    const scene = makeScene()
+    scene.entities.push(makeEntity('inside-id', { x: 0, y: 500, z: 0 }))
+    scene.entities.push(makeEntity('outside-id', { x: 1200, y: 500, z: 0 }))
+    const entitiesBeforeResize = structuredClone(scene.entities)
+    const connectionsBeforeResize = structuredClone(scene.connections)
+
+    const outOfBoundsIds = resizeRoom(scene, {
+      width: 1000,
+      depth: 3600,
+      height: 2400,
+    })
+
+    expect(scene.room).toMatchObject({ width: 1000, depth: 3600, height: 2400 })
+    expect(outOfBoundsIds).toEqual(['outside-id'])
+    expect(scene.entities).toEqual(entitiesBeforeResize)
+    expect(scene.connections).toEqual(connectionsBeforeResize)
+  })
+})
