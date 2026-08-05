@@ -69,4 +69,46 @@ describe('SceneDocument runtime schema', () => {
       SceneDocumentSchema.safeParse({ ...scene, extensions: cyclicExtensions }).success,
     ).toBe(false)
   })
+
+  it('rejects explicit undefined keys after proving JSON round trips lose their shape', () => {
+    const scene = makeScene()
+    expect(SceneDocumentSchema.parse(scene)).toEqual(scene)
+
+    const withUndefinedDescription = {
+      ...scene,
+      metadata: { ...scene.metadata, description: undefined },
+    }
+    const roundTripped = JSON.parse(JSON.stringify(withUndefinedDescription)) as {
+      metadata: Record<string, unknown>
+    }
+
+    expect(withUndefinedDescription.metadata).toHaveProperty('description', undefined)
+    expect(roundTripped.metadata).not.toHaveProperty('description')
+    expect(SceneDocumentSchema.safeParse(withUndefinedDescription).success).toBe(false)
+  })
+
+  it('rejects non-plain objects that JSON would silently coerce while keeping arrays and plain objects', () => {
+    const scene = makeScene()
+    const customPrototype = Object.create({ inheritedValue: 'lost' }) as { value: string }
+    customPrototype.value = 'kept'
+
+    expect(
+      SceneDocumentSchema.safeParse({
+        ...scene,
+        extensions: { values: [1, { valid: true }] },
+      }).success,
+    ).toBe(true)
+    expect(
+      SceneDocumentSchema.safeParse({
+        ...scene,
+        extensions: { pattern: /runtime-only/ },
+      }).success,
+    ).toBe(false)
+    expect(
+      SceneDocumentSchema.safeParse({
+        ...scene,
+        extensions: { customPrototype },
+      }).success,
+    ).toBe(false)
+  })
 })

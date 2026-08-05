@@ -110,6 +110,18 @@ describe('SceneDocument graph invariants', () => {
     expect(normalized).not.toHaveProperty('ui')
   })
 
+  it('omits absent catalog keys during normalization so JSON round trips preserve shape', () => {
+    const scene = makeScene()
+    const entity = makeEntity('catalog-less-id', { x: 0, y: 500, z: 0 })
+    delete entity.catalog
+    scene.entities.push(entity)
+
+    const normalized = normalizeScene(scene)
+
+    expect(normalized.entities[0]).not.toHaveProperty('catalog')
+    expect(JSON.parse(JSON.stringify(normalized))).toEqual(normalized)
+  })
+
   it('resizes only the room and returns IDs that are outside the new bounds', () => {
     const scene = makeScene()
     scene.entities.push(makeEntity('inside-id', { x: 0, y: 500, z: 0 }))
@@ -127,5 +139,52 @@ describe('SceneDocument graph invariants', () => {
     expect(outOfBoundsIds).toEqual(['outside-id'])
     expect(scene.entities).toEqual(entitiesBeforeResize)
     expect(scene.connections).toEqual(connectionsBeforeResize)
+  })
+
+  it('maps unequal width, depth, and height to the correct world axes at zero rotation', () => {
+    const scene = makeScene()
+    const entity = makeEntity('unequal-axis-id', { x: 0, y: 100, z: 0 })
+    entity.dimensions = { width: 100, depth: 100, height: 2300 }
+    scene.entities.push(entity)
+
+    const outOfBoundsIds = resizeRoom(scene, {
+      width: 2700,
+      depth: 3600,
+      height: 2400,
+    })
+
+    expect(outOfBoundsIds).toEqual(['unequal-axis-id'])
+  })
+
+  it('composes parent translation before checking a child against room bounds', () => {
+    const scene = makeScene()
+    const parent = makeEntity('translation-parent-id', { x: 1200, y: 0, z: 0 })
+    const child = makeEntity('translation-child-id', { x: 300, y: 0, z: 0 }, parent.id)
+    scene.entities.push(parent, child)
+
+    const outOfBoundsIds = resizeRoom(scene, {
+      width: 2700,
+      depth: 3600,
+      height: 2400,
+    })
+
+    expect(outOfBoundsIds).toEqual(['translation-child-id'])
+  })
+
+  it('composes parent rotation before applying a child world-space extent', () => {
+    const scene = makeScene()
+    const parent = makeEntity('rotation-parent-id', { x: 0, y: 0, z: 0 })
+    parent.transform.rotation.z = 90
+    const child = makeEntity('rotation-child-id', { x: 1150, y: 0, z: 0 }, parent.id)
+    child.dimensions = { width: 300, depth: 100, height: 100 }
+    scene.entities.push(parent, child)
+
+    const outOfBoundsIds = resizeRoom(scene, {
+      width: 2700,
+      depth: 3600,
+      height: 2400,
+    })
+
+    expect(outOfBoundsIds).toEqual(['rotation-child-id'])
   })
 })

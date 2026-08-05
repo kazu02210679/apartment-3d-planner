@@ -126,26 +126,103 @@ export const ConnectionSchema = z
   })
   .strict()
 
-function hasCyclicObjectReferences(
+function isArrayIndexProperty(name: string): boolean {
+  const index = Number(name)
+
+  return (
+    Number.isInteger(index) && index >= 0 && index < 2 ** 32 - 1 && String(index) === name
+  )
+}
+
+function findLosslessJsonViolation(
   value: unknown,
   ancestors = new Set<object>(),
-): boolean {
-  if (typeof value !== 'object' || value === null) {
-    return false
+): string | undefined {
+  if (value === undefined) {
+    return 'undefined values are not valid persisted JSON.'
+  }
+
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+    return undefined
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value)
+      ? undefined
+      : 'non-finite numbers are not valid persisted JSON.'
+  }
+
+  if (
+    typeof value === 'function' ||
+    typeof value === 'symbol' ||
+    typeof value === 'bigint'
+  ) {
+    return `${typeof value} values are not valid persisted JSON.`
+  }
+
+  if (typeof value !== 'object') {
+    return `Values of type ${typeof value} are not valid persisted JSON.`
   }
 
   if (ancestors.has(value)) {
-    return true
+    return 'cyclic object references are not valid persisted JSON.'
   }
 
   ancestors.add(value)
-  const children = Array.isArray(value) ? value : Object.values(value)
-  const containsCycle = children.some((child) =>
-    hasCyclicObjectReferences(child, ancestors),
-  )
-  ancestors.delete(value)
 
-  return containsCycle
+  if (Array.isArray(value)) {
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      return 'symbol-keyed array properties are not valid persisted JSON.'
+    }
+
+    for (const propertyName of Object.getOwnPropertyNames(value)) {
+      if (propertyName !== 'length' && !isArrayIndexProperty(propertyName)) {
+        return 'arrays may only contain indexed JSON values.'
+      }
+    }
+
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.prototype.hasOwnProperty.call(value, index)) {
+        return 'sparse arrays are not valid persisted JSON.'
+      }
+
+      const violation = findLosslessJsonViolation(value[index], ancestors)
+
+      if (violation) {
+        return violation
+      }
+    }
+  } else {
+    const prototype = Object.getPrototypeOf(value)
+
+    if (prototype !== Object.prototype && prototype !== null) {
+      return 'only plain objects are valid persisted JSON objects.'
+    }
+
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      return 'symbol-keyed object properties are not valid persisted JSON.'
+    }
+
+    const ownPropertyNames = Object.getOwnPropertyNames(value)
+    const enumerablePropertyNames = Object.keys(value)
+
+    if (ownPropertyNames.length !== enumerablePropertyNames.length) {
+      return 'non-enumerable object properties are not valid persisted JSON.'
+    }
+
+    const objectValue = value as Record<string, unknown>
+
+    for (const propertyName of enumerablePropertyNames) {
+      const violation = findLosslessJsonViolation(objectValue[propertyName], ancestors)
+
+      if (violation) {
+        return violation
+      }
+    }
+  }
+
+  ancestors.delete(value)
+  return undefined
 }
 
 const SceneDocumentBaseSchema = z
@@ -162,10 +239,12 @@ const SceneDocumentBaseSchema = z
   .strict()
 
 export const SceneDocumentSchema = z.preprocess((input, context) => {
-  if (hasCyclicObjectReferences(input)) {
+  const violation = findLosslessJsonViolation(input)
+
+  if (violation) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'SceneDocument must not contain cyclic object references.',
+      message: violation,
     })
     return z.NEVER
   }

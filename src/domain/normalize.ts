@@ -55,12 +55,14 @@ export function normalizeScene(input: unknown): SceneDocument {
         extensions: normalizeJsonObject(port.extensions),
       })),
       extensions: normalizeJsonObject(entity.extensions),
-      catalog: entity.catalog
+      ...(entity.catalog
         ? {
-            ...entity.catalog,
-            extensions: normalizeJsonObject(entity.catalog.extensions),
+            catalog: {
+              ...entity.catalog,
+              extensions: normalizeJsonObject(entity.catalog.extensions),
+            },
           }
-        : undefined,
+        : {}),
     })),
     connections: [...scene.connections].sort(compareIds).map((connection) => ({
       ...connection,
