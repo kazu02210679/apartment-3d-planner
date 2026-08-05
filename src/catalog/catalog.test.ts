@@ -8,6 +8,7 @@ import {
   resolveCatalogDimensions,
 } from './catalog'
 import { calculateSixteenByNinePanelDimensions } from './dimensions'
+import type { Entity, JsonObject } from '../domain/schema'
 import { createFutureWorkstationScene } from '../domain/templates/future-workstation'
 
 function templateEntity(itemId: string) {
@@ -85,16 +86,35 @@ describe('generic catalog', () => {
     })
   })
 
-  it('resets selected overrides without changing the entity identity', () => {
+  it('resets a canonical nested override leaf without mutation and prunes empty parents', () => {
     const entity = {
       id: 'desk-instance-01',
-      overrides: { width: 1900, height: 1100, finish: 'walnut' },
+      overrides: {
+        dimensions: { width: 1900, height: 1100 },
+        geometry: { lDesk: { returnSide: 'left' } },
+        materialId: 'wood',
+      },
     }
+    const before = structuredClone(entity)
 
-    expect(resetCatalogOverrides(entity, 'width')).toEqual({
+    expect(resetCatalogOverrides(entity, 'dimensions.width')).toEqual({
       id: 'desk-instance-01',
-      overrides: { height: 1100, finish: 'walnut' },
+      overrides: {
+        dimensions: { height: 1100 },
+        geometry: { lDesk: { returnSide: 'left' } },
+        materialId: 'wood',
+      },
     })
+    expect(entity).toEqual(before)
+    expect(
+      resetCatalogOverrides(
+        { id: entity.id, overrides: { dimensions: { width: 1900 } } },
+        'dimensions.width',
+      ),
+    ).toEqual({ id: entity.id, overrides: {} })
+    expect(() => resetCatalogOverrides(entity, 'dimensions.radius')).toThrow(
+      'Unsupported',
+    )
     expect(resetCatalogOverrides(entity)).toEqual({
       id: 'desk-instance-01',
       overrides: {},
@@ -216,5 +236,40 @@ describe('generic catalog', () => {
       resolveCatalogInstance({ ...cable, overrides: { dimensions: { width: 2400 } } })
         .dimensions.width,
     ).toBe(2400)
+  })
+
+  it('rejects catalog revision mismatches before resolving an instance', () => {
+    const desk = templateEntity('desk.l-shaped-sit-stand')
+
+    expect(resolveCatalogInstance(desk).id).toBe(desk.id)
+    expect(() =>
+      resolveCatalogInstance({
+        ...desk,
+        catalog: { ...desk.catalog!, revision: 'outdated-revision' },
+      }),
+    ).toThrow('revision mismatch')
+  })
+
+  it('rejects unknown and malformed canonical nested override fields', () => {
+    const desk = templateEntity('desk.l-shaped-sit-stand')
+    const monitor = templateEntity('display.monitor')
+    const invalidOverrides: readonly [Entity, JsonObject][] = [
+      [desk, { dimensions: { widht: 1900 } }],
+      [desk, { geometry: { angle: 90 } }],
+      [desk, { geometry: { lDesk: { returnSde: 'left' } } }],
+      [desk, { geometry: { lDesk: { mainTop: { widht: 1900 } } } }],
+      [desk, { geometry: { lDesk: { returnTop: { deph: 700 } } } }],
+      [monitor, { geometry: { panel: { widht: 600 } } }],
+      [desk, { geometry: { lDesk: 3 } }],
+      [desk, { geometry: { lDesk: { mainTop: 3 } } }],
+      [desk, { geometry: { lDesk: { returnTop: 3 } } }],
+      [monitor, { geometry: { panel: 3 } }],
+    ]
+
+    for (const [entity, overrides] of invalidOverrides) {
+      expect(() => resolveCatalogInstance({ ...entity, overrides })).toThrow(
+        'Unsupported',
+      )
+    }
   })
 })

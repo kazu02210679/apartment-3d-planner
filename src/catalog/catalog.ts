@@ -41,6 +41,18 @@ function readPositiveNumber(
   return value
 }
 
+function assertAllowedKeys(
+  value: JsonObject,
+  allowedKeys: readonly string[],
+  location: string,
+): void {
+  for (const key of Object.keys(value)) {
+    if (!allowedKeys.includes(key)) {
+      throw new Error(`Unsupported ${location} override key: ${key}`)
+    }
+  }
+}
+
 function readDimensions(value: JsonValue | undefined): DimensionOverrides {
   if (value === undefined) {
     return {}
@@ -50,16 +62,15 @@ function readDimensions(value: JsonValue | undefined): DimensionOverrides {
     throw new Error('Catalog dimension overrides must be a JSON object.')
   }
 
+  assertAllowedKeys(value, ['width', 'depth', 'height'], 'dimensions')
+  const width = readPositiveNumber(value.width, 'dimensions.width')
+  const depth = readPositiveNumber(value.depth, 'dimensions.depth')
+  const height = readPositiveNumber(value.height, 'dimensions.height')
+
   return {
-    ...(readPositiveNumber(value.width, 'dimensions.width') !== undefined
-      ? { width: readPositiveNumber(value.width, 'dimensions.width') }
-      : {}),
-    ...(readPositiveNumber(value.depth, 'dimensions.depth') !== undefined
-      ? { depth: readPositiveNumber(value.depth, 'dimensions.depth') }
-      : {}),
-    ...(readPositiveNumber(value.height, 'dimensions.height') !== undefined
-      ? { height: readPositiveNumber(value.height, 'dimensions.height') }
-      : {}),
+    ...(width !== undefined ? { width } : {}),
+    ...(depth !== undefined ? { depth } : {}),
+    ...(height !== undefined ? { height } : {}),
   }
 }
 
@@ -69,16 +80,16 @@ function readPlanarDimensions(value: JsonValue | undefined, name: string) {
   }
 
   if (!isJsonObject(value)) {
-    throw new Error(`${name} must be a JSON object.`)
+    throw new Error(`Unsupported ${name} override: expected a JSON object.`)
   }
 
+  assertAllowedKeys(value, ['width', 'depth'], name)
+  const width = readPositiveNumber(value.width, `${name}.width`)
+  const depth = readPositiveNumber(value.depth, `${name}.depth`)
+
   return {
-    ...(readPositiveNumber(value.width, `${name}.width`) !== undefined
-      ? { width: readPositiveNumber(value.width, `${name}.width`) }
-      : {}),
-    ...(readPositiveNumber(value.depth, `${name}.depth`) !== undefined
-      ? { depth: readPositiveNumber(value.depth, `${name}.depth`) }
-      : {}),
+    ...(width !== undefined ? { width } : {}),
+    ...(depth !== undefined ? { depth } : {}),
   }
 }
 
@@ -90,11 +101,29 @@ function readGeometryOverrides(
   }
 
   if (!isJsonObject(value)) {
-    throw new Error('Catalog geometry overrides must be a JSON object.')
+    throw new Error('Unsupported geometry override: expected a JSON object.')
   }
+
+  assertAllowedKeys(value, ['panel', 'lDesk'], 'geometry')
 
   const panel = value.panel
   const lDesk = value.lDesk
+
+  if (panel !== undefined && !isJsonObject(panel)) {
+    throw new Error('Unsupported geometry.panel override: expected a JSON object.')
+  }
+
+  if (lDesk !== undefined && !isJsonObject(lDesk)) {
+    throw new Error('Unsupported geometry.lDesk override: expected a JSON object.')
+  }
+
+  if (isJsonObject(panel)) {
+    assertAllowedKeys(panel, ['width', 'height'], 'geometry.panel')
+  }
+
+  if (isJsonObject(lDesk)) {
+    assertAllowedKeys(lDesk, ['mainTop', 'returnTop', 'returnSide'], 'geometry.lDesk')
+  }
 
   return {
     ...(isJsonObject(panel)
@@ -304,6 +333,13 @@ export function resolveCatalogInstance(entity: Entity): ResolvedCatalogInstance 
   }
 
   const definition = getCatalogDefinition(entity.catalog.itemId)
+
+  if (entity.catalog.revision !== definition.revision) {
+    throw new Error(
+      `Catalog revision mismatch for ${definition.id}: expected ${definition.revision}, received ${entity.catalog.revision}.`,
+    )
+  }
+
   const overrides = readCatalogInstanceOverrides(entity.overrides)
   const materialId = overrides.materialId ?? definition.materials[0]?.id
 
@@ -339,8 +375,51 @@ export function resetCatalogOverrides(
     return { ...entity, overrides: {} }
   }
 
-  const overrides: JsonObject = { ...entity.overrides }
-  delete overrides[key]
+  const supportedPaths: Record<string, readonly string[]> = {
+    'dimensions.width': ['dimensions', 'width'],
+    'dimensions.depth': ['dimensions', 'depth'],
+    'dimensions.height': ['dimensions', 'height'],
+    'geometry.panel.width': ['geometry', 'panel', 'width'],
+    'geometry.panel.height': ['geometry', 'panel', 'height'],
+    'geometry.lDesk.mainTop.width': ['geometry', 'lDesk', 'mainTop', 'width'],
+    'geometry.lDesk.mainTop.depth': ['geometry', 'lDesk', 'mainTop', 'depth'],
+    'geometry.lDesk.returnTop.width': ['geometry', 'lDesk', 'returnTop', 'width'],
+    'geometry.lDesk.returnTop.depth': ['geometry', 'lDesk', 'returnTop', 'depth'],
+    'geometry.lDesk.returnSide': ['geometry', 'lDesk', 'returnSide'],
+    materialId: ['materialId'],
+  }
+  const path = supportedPaths[key]
+
+  if (!path) {
+    throw new Error(`Unsupported catalog override path: ${key}`)
+  }
+
+  const overrides = structuredClone(entity.overrides)
+  const parents: JsonObject[] = []
+  let current: JsonObject = overrides
+
+  for (const part of path.slice(0, -1)) {
+    const next = current[part]
+
+    if (!isJsonObject(next)) {
+      return { ...entity, overrides }
+    }
+
+    parents.push(current)
+    current = next
+  }
+
+  delete current[path[path.length - 1]]
+
+  for (let index = parents.length - 1; index >= 0; index -= 1) {
+    const parent = parents[index]
+    const childKey = path[index]
+    const child = parent[childKey]
+
+    if (isJsonObject(child) && Object.keys(child).length === 0) {
+      delete parent[childKey]
+    }
+  }
 
   return { ...entity, overrides }
 }
