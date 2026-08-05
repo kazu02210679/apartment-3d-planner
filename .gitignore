@@ -1,0 +1,8 @@
+.superpowers/
+.ai-pro-loop/
+work/
+outputs/
+node_modules/
+dist/
+.env*
+!.env.example
