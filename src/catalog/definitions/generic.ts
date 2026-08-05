@@ -186,7 +186,14 @@ export const GENERIC_CATALOG_DEFINITIONS: readonly CatalogDefinition[] = [
       depth: 220,
       height: monitor27.height + 120,
     },
-    dimensionPolicy: fixed,
+    dimensionPolicy: {
+      mode: 'bounded',
+      axes: {
+        width: { min: 300, max: 1200, step: 1 },
+        depth: { min: 50, max: 500, step: 1 },
+        height: { min: 200, max: 1000, step: 1 },
+      },
+    },
     presets: [
       {
         id: 'monitor-24',
@@ -240,6 +247,8 @@ export const GENERIC_CATALOG_DEFINITIONS: readonly CatalogDefinition[] = [
     120,
     450,
     ['mount'],
+    [],
+    fixed,
   ),
   box(
     'light.display',

@@ -218,13 +218,34 @@ describe('generic catalog', () => {
     }
   })
 
-  it('enforces fixed, bounded, and free dimension policies during instance resolution', () => {
+  it('supports a custom monitor size without dropping its catalog reference', () => {
     const monitor = templateEntity('display.monitor')
+    const resolved = resolveCatalogInstance({
+      ...monitor,
+      overrides: {
+        dimensions: { width: 620, depth: 210, height: 470 },
+        geometry: { panel: { width: 620, height: 350 } },
+      },
+    })
+
+    expect(resolved.catalog.itemId).toBe('display.monitor')
+    expect(resolved.dimensions).toEqual({ width: 620, depth: 210, height: 470 })
+    expect(resolved.geometry).toEqual({
+      kind: 'panel-with-stand',
+      panel: { width: 620, height: 350 },
+    })
+  })
+
+  it('enforces fixed, bounded, and free dimension policies during instance resolution', () => {
+    const monitorArm = templateEntity('mount.monitor-arm')
     const desk = templateEntity('desk.l-shaped-sit-stand')
     const cable = templateEntity('cable.generic')
 
     expect(() =>
-      resolveCatalogInstance({ ...monitor, overrides: { dimensions: { width: 700 } } }),
+      resolveCatalogInstance({
+        ...monitorArm,
+        overrides: { dimensions: { width: 700 } },
+      }),
     ).toThrow('fixed')
     expect(() =>
       resolveCatalogInstance({ ...desk, overrides: { dimensions: { height: 1300 } } }),
