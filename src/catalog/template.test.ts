@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { validateSceneInvariants } from '../domain/invariants'
+import { findOutOfBoundsEntityIds } from '../domain/invariants'
+import { getCatalogDefinition } from './catalog'
 import { createFutureWorkstationScene } from '../domain/templates/future-workstation'
 
 function deterministicIds(): () => string {
@@ -48,6 +50,32 @@ describe('future workstation template', () => {
     ).toEqual(['monitor-27', 'monitor-27', 'monitor-27', 'monitor-27'])
     expect(validateSceneInvariants(first)).toEqual(first)
     expect(JSON.parse(JSON.stringify(first))).toEqual(first)
+    expect(findOutOfBoundsEntityIds(first)).toEqual([])
+
+    for (const entity of first.entities) {
+      const definition = entity.catalog && getCatalogDefinition(entity.catalog.itemId)
+
+      expect(entity.ports.map((port) => port.extensions.catalogPortId)).toEqual(
+        definition?.ports.map((port) => port.id) ?? [],
+      )
+    }
+
+    for (const connection of first.connections) {
+      for (const endpoint of connection.endpoints) {
+        const entity = first.entities.find(
+          (candidate) => candidate.id === endpoint.entityId,
+        )
+        const port = entity?.ports.find((candidate) => candidate.id === endpoint.portId)
+        const catalogPortId = port?.extensions.catalogPortId
+
+        expect(typeof catalogPortId).toBe('string')
+        expect(
+          getCatalogDefinition(entity!.catalog!.itemId).ports.some(
+            (candidate) => candidate.id === catalogPortId,
+          ),
+        ).toBe(true)
+      }
+    }
   })
 
   it('allows another supported tatami preset without changing the entity inventory', () => {

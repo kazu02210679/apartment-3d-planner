@@ -1,4 +1,4 @@
-import type { Dimensions, JsonObject } from '../domain/schema'
+import type { CatalogReference, Dimensions, JsonObject } from '../domain/schema'
 
 export type LocalizedText = Readonly<Record<'en' | 'ja', string>>
 
@@ -28,10 +28,27 @@ export type GeometryDescriptor =
       returnSide: 'left' | 'right'
     }>
 
+export interface CatalogGeometryOverrides {
+  readonly panel?: Readonly<Partial<{ width: number; height: number }>>
+  readonly lDesk?: Readonly<{
+    mainTop?: Readonly<Partial<{ width: number; depth: number }>>
+    returnTop?: Readonly<Partial<{ width: number; depth: number }>>
+    returnSide?: 'left' | 'right'
+  }>
+}
+
+export interface CatalogInstanceOverrides {
+  readonly dimensions?: Readonly<Partial<Dimensions>>
+  readonly geometry?: CatalogGeometryOverrides
+  readonly materialId?: string
+  readonly properties?: JsonObject
+}
+
 export interface CatalogPreset {
   readonly id: string
   readonly displayName: LocalizedText
   readonly dimensions: Readonly<Partial<Dimensions>>
+  readonly geometry?: CatalogGeometryOverrides
   readonly extensions: JsonObject
 }
 
@@ -77,4 +94,16 @@ export type DimensionOverrides = Readonly<Partial<Dimensions>>
 export interface CatalogOverrideTarget {
   readonly id: string
   readonly overrides: JsonObject
+}
+
+export interface ResolvedCatalogInstance {
+  readonly id: string
+  readonly catalog: CatalogReference
+  readonly dimensions: Dimensions
+  readonly geometry: GeometryDescriptor
+  readonly materialId: string
+  readonly properties: JsonObject
+  readonly capabilities: readonly string[]
+  readonly inspectorFields: readonly InspectorField[]
+  readonly portDefinitions: readonly CatalogPortDefinition[]
 }

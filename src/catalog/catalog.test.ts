@@ -4,9 +4,28 @@ import {
   CATALOG_DEFINITIONS,
   getCatalogDefinition,
   resetCatalogOverrides,
+  resolveCatalogInstance,
   resolveCatalogDimensions,
 } from './catalog'
 import { calculateSixteenByNinePanelDimensions } from './dimensions'
+import { createFutureWorkstationScene } from '../domain/templates/future-workstation'
+
+function templateEntity(itemId: string) {
+  const scene = createFutureWorkstationScene({
+    idFactory: (() => {
+      let index = 0
+      return () => `catalog-test-id-${++index}`
+    })(),
+    now: () => '2026-08-06T00:00:00.000Z',
+  })
+  const entity = scene.entities.find((candidate) => candidate.catalog?.itemId === itemId)
+
+  if (!entity) {
+    throw new Error(`Expected template entity ${itemId}`)
+  }
+
+  return entity
+}
 
 describe('generic catalog', () => {
   it('covers the renderer-independent generic equipment categories', () => {
@@ -50,16 +69,20 @@ describe('generic catalog', () => {
     expect(resolveCatalogDimensions(monitor)).toEqual({
       width: 598,
       depth: 220,
-      height: 336,
+      height: 456,
     })
     expect(resolveCatalogDimensions(monitor, 'monitor-32')).toEqual({
       width: 708,
       depth: 220,
-      height: 398,
+      height: 518,
     })
     expect(
-      resolveCatalogDimensions(monitor, 'monitor-32', { width: 700, depth: 260 }),
-    ).toEqual({ width: 700, depth: 260, height: 398 })
+      resolveCatalogDimensions('desk.l-shaped-sit-stand', 'standing', { width: 1900 }),
+    ).toEqual({
+      width: 1900,
+      depth: 1400,
+      height: 1100,
+    })
   })
 
   it('resets selected overrides without changing the entity identity', () => {
@@ -96,20 +119,102 @@ describe('generic catalog', () => {
   })
 
   it('changes the L-desk variant dimensions while preserving the instance ID', () => {
-    const desk = getCatalogDefinition('desk.l-shaped-sit-stand')
-    const entity = { id: 'l-desk-01', overrides: {} }
+    const desk = templateEntity('desk.l-shaped-sit-stand')
+    const seated = resolveCatalogInstance(desk)
+    const standing = resolveCatalogInstance({
+      ...desk,
+      catalog: { ...desk.catalog!, presetId: 'standing' },
+    })
+    const freeHeight = resolveCatalogInstance({
+      ...desk,
+      catalog: { ...desk.catalog!, presetId: 'free-height' },
+      overrides: {
+        dimensions: { height: 930 },
+        geometry: {
+          lDesk: {
+            mainTop: { width: 2000, depth: 750 },
+            returnTop: { width: 1200, depth: 650 },
+            returnSide: 'left',
+          },
+        },
+      },
+    })
 
-    expect(desk.geometry.kind).toBe('l-desk')
-    expect(resolveCatalogDimensions(desk, 'seated')).toEqual({
+    expect(seated.dimensions).toEqual({
       width: 1800,
       depth: 1400,
       height: 720,
     })
-    expect(resolveCatalogDimensions(desk, 'standing')).toEqual({
+    expect(seated).toMatchObject({
+      id: desk.id,
+      materialId: 'laminate',
+      properties: {},
+      capabilities: ['sit-stand', 'l-shaped'],
+      inspectorFields: [{ id: 'return-side' }],
+      portDefinitions: [{ id: 'cable-tray' }],
+    })
+    expect(standing.dimensions).toEqual({
       width: 1800,
       depth: 1400,
       height: 1100,
     })
-    expect(resetCatalogOverrides(entity)).toMatchObject({ id: 'l-desk-01' })
+    expect(freeHeight.id).toBe(desk.id)
+    expect(freeHeight.dimensions.height).toBe(930)
+    expect(freeHeight.geometry).toMatchObject({
+      kind: 'l-desk',
+      mainTop: { width: 2000, depth: 750 },
+      returnTop: { width: 1200, depth: 650 },
+      returnSide: 'left',
+    })
+  })
+
+  it('resolves each monitor preset into a panel and stand-inclusive device dimensions', () => {
+    const monitor = templateEntity('display.monitor')
+    const expected = [
+      ['monitor-24', 531, 299],
+      ['monitor-27', 598, 336],
+      ['monitor-32', 708, 398],
+    ] as const
+
+    for (const [presetId, width, panelHeight] of expected) {
+      const resolved = resolveCatalogInstance({
+        ...monitor,
+        catalog: { ...monitor.catalog!, presetId },
+      })
+
+      expect(resolved.geometry).toMatchObject({
+        kind: 'panel-with-stand',
+        panel: { width, height: panelHeight },
+      })
+      expect(resolved.dimensions.width).toBe(width)
+      expect(resolved.dimensions.height).toBeGreaterThan(panelHeight)
+      if (resolved.geometry.kind !== 'panel-with-stand') {
+        throw new Error('Expected a panel-with-stand monitor geometry.')
+      }
+      expect(Math.abs(resolved.geometry.panel.width - width)).toBeLessThanOrEqual(1)
+      expect(Math.abs(resolved.geometry.panel.height - panelHeight)).toBeLessThanOrEqual(
+        1,
+      )
+    }
+  })
+
+  it('enforces fixed, bounded, and free dimension policies during instance resolution', () => {
+    const monitor = templateEntity('display.monitor')
+    const desk = templateEntity('desk.l-shaped-sit-stand')
+    const cable = templateEntity('cable.generic')
+
+    expect(() =>
+      resolveCatalogInstance({ ...monitor, overrides: { dimensions: { width: 700 } } }),
+    ).toThrow('fixed')
+    expect(() =>
+      resolveCatalogInstance({ ...desk, overrides: { dimensions: { height: 1300 } } }),
+    ).toThrow('outside allowed')
+    expect(() =>
+      resolveCatalogInstance({ ...cable, overrides: { dimensions: { width: 0 } } }),
+    ).toThrow('positive')
+    expect(
+      resolveCatalogInstance({ ...cable, overrides: { dimensions: { width: 2400 } } })
+        .dimensions.width,
+    ).toBe(2400)
   })
 })

@@ -1,17 +1,36 @@
 import { calculateSixteenByNinePanelDimensions } from '../dimensions'
-import type { CatalogDefinition, LocalizedText } from '../types'
+import type {
+  CatalogDefinition,
+  CatalogPortDefinition,
+  DimensionPolicy,
+  LocalizedText,
+} from '../types'
 
 const label = (en: string, ja: string): LocalizedText => ({ en, ja })
 const empty = {} as const
 const fixed = { mode: 'fixed', axes: {} } as const
-const bounded = {
-  mode: 'bounded',
-  axes: {
-    width: { min: 400, max: 3000, step: 10 },
-    depth: { min: 100, max: 2000, step: 10 },
-    height: { min: 50, max: 2400, step: 10 },
-  },
-} as const
+const free = { mode: 'free', axes: {} } as const satisfies DimensionPolicy
+
+function boundedFor(width: number, depth: number, height: number): DimensionPolicy {
+  const constraint = (value: number) => ({
+    min: Math.max(1, Math.floor(value / 2)),
+    max: value * 2,
+    step: 10,
+  })
+
+  return {
+    mode: 'bounded',
+    axes: {
+      width: constraint(width),
+      depth: constraint(depth),
+      height: constraint(height),
+    },
+  }
+}
+
+function port(id: string, en: string, ja: string, kind: string): CatalogPortDefinition {
+  return { id, displayName: label(en, ja), kind, extensions: empty }
+}
 
 function box(
   id: string,
@@ -21,6 +40,8 @@ function box(
   depth: number,
   height: number,
   capabilities: readonly string[] = [],
+  ports: readonly CatalogPortDefinition[] = [],
+  dimensionPolicy: DimensionPolicy = boundedFor(width, depth, height),
 ): CatalogDefinition {
   return {
     id,
@@ -29,14 +50,14 @@ function box(
     displayName,
     geometry: { kind: 'box' },
     defaultDimensions: { width, depth, height },
-    dimensionPolicy: bounded,
+    dimensionPolicy,
     presets: [],
     materials: [
       { id: 'standard', displayName: label('Standard', '標準'), extensions: empty },
     ],
     capabilities,
     inspectorFields: [],
-    ports: [],
+    ports,
     extensions: empty,
   }
 }
@@ -63,7 +84,11 @@ export const GENERIC_CATALOG_DEFINITIONS: readonly CatalogDefinition[] = [
     defaultDimensions: { width: 1800, depth: 1400, height: 720 },
     dimensionPolicy: {
       mode: 'bounded',
-      axes: { height: { min: 650, max: 1250, step: 10 } },
+      axes: {
+        width: { min: 1200, max: 2400, step: 10 },
+        depth: { min: 900, max: 2000, step: 10 },
+        height: { min: 650, max: 1250, step: 10 },
+      },
     },
     presets: [
       {
@@ -127,10 +152,26 @@ export const GENERIC_CATALOG_DEFINITIONS: readonly CatalogDefinition[] = [
     450,
     450,
     ['compute'],
+    [
+      port('power-in', 'Power input', '電源入力', 'power'),
+      port('display-out', 'Display output', '映像出力', 'display'),
+      port('network', 'Network', 'ネットワーク', 'network'),
+    ],
   ),
-  box('computer.mac', 'computer', label('Mac computer', 'Mac'), 300, 250, 60, [
-    'compute',
-  ]),
+  box(
+    'computer.mac',
+    'computer',
+    label('Mac computer', 'Mac'),
+    300,
+    250,
+    60,
+    ['compute'],
+    [
+      port('power-in', 'Power input', '電源入力', 'power'),
+      port('display-out', 'Display output', '映像出力', 'display'),
+      port('network', 'Network', 'ネットワーク', 'network'),
+    ],
+  ),
   box('computer.mini-pc', 'computer', label('Mini PC', 'ミニPC'), 150, 150, 50, [
     'compute',
   ]),
@@ -140,25 +181,32 @@ export const GENERIC_CATALOG_DEFINITIONS: readonly CatalogDefinition[] = [
     category: 'display',
     displayName: label('Monitor', 'モニター'),
     geometry: { kind: 'panel-with-stand', panel: monitor27 },
-    defaultDimensions: { width: monitor27.width, depth: 220, height: monitor27.height },
+    defaultDimensions: {
+      width: monitor27.width,
+      depth: 220,
+      height: monitor27.height + 120,
+    },
     dimensionPolicy: fixed,
     presets: [
       {
         id: 'monitor-24',
         displayName: label('24-inch 16:9', '24インチ 16:9'),
-        dimensions: { ...monitor24 },
+        dimensions: { width: monitor24.width, height: monitor24.height + 120 },
+        geometry: { panel: monitor24 },
         extensions: empty,
       },
       {
         id: 'monitor-27',
         displayName: label('27-inch 16:9', '27インチ 16:9'),
-        dimensions: { ...monitor27 },
+        dimensions: { width: monitor27.width, height: monitor27.height + 120 },
+        geometry: { panel: monitor27 },
         extensions: empty,
       },
       {
         id: 'monitor-32',
         displayName: label('32-inch 16:9', '32インチ 16:9'),
-        dimensions: { ...monitor32 },
+        dimensions: { width: monitor32.width, height: monitor32.height + 120 },
+        geometry: { panel: monitor32 },
         extensions: empty,
       },
     ],
@@ -171,14 +219,7 @@ export const GENERIC_CATALOG_DEFINITIONS: readonly CatalogDefinition[] = [
     ],
     capabilities: ['display'],
     inspectorFields: [],
-    ports: [
-      {
-        id: 'display-input',
-        displayName: label('Display input', '映像入力'),
-        kind: 'display',
-        extensions: empty,
-      },
-    ],
+    ports: [port('display-input', 'Display input', '映像入力', 'display')],
     extensions: empty,
   },
   box(
@@ -189,6 +230,7 @@ export const GENERIC_CATALOG_DEFINITIONS: readonly CatalogDefinition[] = [
     100,
     300,
     ['display'],
+    [port('display-input', 'Display input', '映像入力', 'display')],
   ),
   box(
     'mount.monitor-arm',
@@ -207,16 +249,32 @@ export const GENERIC_CATALOG_DEFINITIONS: readonly CatalogDefinition[] = [
     80,
     50,
     ['lighting'],
+    [port('power-in', 'Power input', '電源入力', 'power')],
   ),
   box('printer.generic', 'printer', label('Printer', 'プリンター'), 500, 400, 300, [
     'print',
   ]),
-  box('power.strip', 'power', label('Power strip', '電源タップ'), 350, 60, 35, ['power']),
-  box('cable.generic', 'cable', label('Cable', 'ケーブル'), 1000, 20, 20, [
+  box(
+    'power.strip',
     'power',
-    'display',
-    'network',
-  ]),
+    label('Power strip', '電源タップ'),
+    350,
+    60,
+    35,
+    ['power'],
+    [port('outlet', 'Outlet', 'コンセント', 'power')],
+  ),
+  box(
+    'cable.generic',
+    'cable',
+    label('Cable', 'ケーブル'),
+    1000,
+    20,
+    20,
+    ['power', 'display', 'network'],
+    [port('end-a', 'End A', '端子A', 'cable'), port('end-b', 'End B', '端子B', 'cable')],
+    free,
+  ),
   box('waste.trash-bin', 'waste', label('Trash bin', 'ごみ箱'), 300, 300, 500),
   box('sleep.bed-futon', 'sleep', label('Bed/futon', 'ベッド・布団'), 1000, 2000, 350),
   box('table.side', 'table', label('Side table', 'サイドテーブル'), 450, 450, 500),

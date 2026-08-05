@@ -13,7 +13,6 @@ interface WorkstationEntityOptions {
   readonly presetId?: string
   readonly position: Entity['transform']['position']
   readonly parentId?: string | null
-  readonly ports?: readonly string[]
 }
 
 function createEntity(nextId: IdFactory, options: WorkstationEntityOptions): Entity {
@@ -34,11 +33,11 @@ function createEntity(nextId: IdFactory, options: WorkstationEntityOptions): Ent
       extensions: {},
     },
     overrides: {},
-    ports: (options.ports ?? []).map((name) => ({
+    ports: definition.ports.map((port) => ({
       id: createOpaqueId(nextId),
-      name,
-      kind: name,
-      extensions: {},
+      name: port.displayName.en,
+      kind: port.kind,
+      extensions: { ...port.extensions, catalogPortId: port.id },
     })),
     properties: {},
     visible: true,
@@ -47,18 +46,30 @@ function createEntity(nextId: IdFactory, options: WorkstationEntityOptions): Ent
   }
 }
 
+function findCatalogPort(entity: Entity, catalogPortId: string): string {
+  const port = entity.ports.find(
+    (candidate) => candidate.extensions.catalogPortId === catalogPortId,
+  )
+
+  if (!port) {
+    throw new Error(`Missing ${catalogPortId} port on ${entity.id}.`)
+  }
+
+  return port.id
+}
+
 function addConnection(
   scene: SceneDocument,
   nextId: IdFactory,
   kind: string,
-  endpoints: readonly [Entity, number][],
+  endpoints: readonly [Entity, string][],
 ): void {
   scene.connections.push({
     id: createOpaqueId(nextId),
     kind,
-    endpoints: endpoints.map(([entity, portIndex]) => ({
+    endpoints: endpoints.map(([entity, catalogPortId]) => ({
       entityId: entity.id,
-      portId: entity.ports[portIndex].id,
+      portId: findCatalogPort(entity, catalogPortId),
     })),
     properties: {},
     extensions: {},
@@ -100,28 +111,24 @@ export function createFutureWorkstationScene(
     name: 'L-shaped sit-stand desk',
     presetId: 'seated',
     position: { x: 0, y: 360, z: 0 },
-    ports: ['cable'],
   })
   add({ itemId: 'seating.chair', name: 'Task chair', position: { x: 0, y: 575, z: 900 } })
   const windows = add({
     itemId: 'computer.windows-tower',
     name: 'Windows workstation',
     position: { x: -700, y: 225, z: 250 },
-    ports: ['power', 'display', 'network'],
   })
   const mac = add({
     itemId: 'computer.mac',
     name: 'Mac workstation',
     position: { x: 700, y: 30, z: 250 },
-    ports: ['power', 'display', 'network'],
   })
   const monitors = Array.from({ length: 4 }, (_, index) =>
     add({
       itemId: 'display.monitor',
       name: `Main monitor ${index + 1}`,
       presetId: 'monitor-27',
-      position: { x: -450 + index * 300, y: 1000, z: -250 },
-      ports: ['display'],
+      position: { x: -450 + index * 300, y: 950, z: -250 },
     }),
   )
   const informationDisplays = Array.from({ length: 2 }, (_, index) =>
@@ -129,7 +136,6 @@ export function createFutureWorkstationScene(
       itemId: 'display.information',
       name: `Side information display ${index + 1}`,
       position: { x: index === 0 ? -1050 : 1050, y: 1000, z: -250 },
-      ports: ['display'],
     }),
   )
   Array.from({ length: 6 }, (_, index) =>
@@ -143,8 +149,7 @@ export function createFutureWorkstationScene(
     add({
       itemId: 'light.display',
       name: `Display light ${index + 1}`,
-      position: { x: index === 0 ? -400 : 400, y: 1250, z: -80 },
-      ports: ['power'],
+      position: { x: index === 0 ? -400 : 400, y: 1150, z: -80 },
     }),
   )
   add({
@@ -156,7 +161,7 @@ export function createFutureWorkstationScene(
   add({
     itemId: 'storage.shelf-cabinet',
     name: 'Storage cabinet',
-    position: { x: 1050, y: 600, z: 1100 },
+    position: { x: 900, y: 600, z: 1100 },
   })
   add({
     itemId: 'printer.generic',
@@ -172,33 +177,28 @@ export function createFutureWorkstationScene(
     itemId: 'power.strip',
     name: 'Power strip one',
     position: { x: -400, y: 35, z: 200 },
-    ports: ['outlet'],
   })
   const powerStripTwo = add({
     itemId: 'power.strip',
     name: 'Power strip two',
     position: { x: 400, y: 35, z: 200 },
-    ports: ['outlet'],
   })
   const powerCable = add({
     itemId: 'cable.generic',
     name: 'Power cable',
     position: { x: -200, y: 20, z: 300 },
-    ports: ['source', 'target'],
   })
   const displayCable = add({
     itemId: 'cable.generic',
     name: 'Display cable',
     position: { x: 0, y: 700, z: -200 },
-    ports: ['source', 'target'],
   })
   const networkCable = add({
     itemId: 'cable.generic',
     name: 'Network cable',
     position: { x: 700, y: 30, z: 350 },
-    ports: ['source', 'target'],
   })
-  add({ itemId: 'sleep.bed-futon', name: 'Futon', position: { x: 700, y: 175, z: 1300 } })
+  add({ itemId: 'sleep.bed-futon', name: 'Futon', position: { x: 700, y: 175, z: 700 } })
   add({
     itemId: 'table.side',
     name: 'Side table',
@@ -208,36 +208,36 @@ export function createFutureWorkstationScene(
   add({
     itemId: 'storage.clothes',
     name: 'Clothes storage',
-    position: { x: 1000, y: 900, z: -1300 },
+    position: { x: 900, y: 300, z: -1200 },
   })
 
   addConnection(scene, nextId, 'power', [
-    [powerCable, 0],
-    [powerStripOne, 0],
-    [windows, 0],
+    [powerCable, 'end-a'],
+    [powerStripOne, 'outlet'],
+    [windows, 'power-in'],
   ])
   addConnection(scene, nextId, 'power', [
-    [powerStripTwo, 0],
-    [mac, 0],
-    [displayLights[0], 0],
-    [displayLights[1], 0],
+    [powerStripTwo, 'outlet'],
+    [mac, 'power-in'],
+    [displayLights[0], 'power-in'],
+    [displayLights[1], 'power-in'],
   ])
   addConnection(scene, nextId, 'display', [
-    [displayCable, 0],
-    [windows, 1],
-    [displayCable, 1],
-    [monitors[0], 0],
+    [displayCable, 'end-a'],
+    [windows, 'display-out'],
+    [displayCable, 'end-b'],
+    [monitors[0], 'display-input'],
   ])
   addConnection(scene, nextId, 'network', [
-    [networkCable, 0],
-    [windows, 2],
-    [networkCable, 1],
-    [mac, 2],
+    [networkCable, 'end-a'],
+    [windows, 'network'],
+    [networkCable, 'end-b'],
+    [mac, 'network'],
   ])
   addConnection(scene, nextId, 'display', [
-    [mac, 1],
-    [informationDisplays[0], 0],
-    [informationDisplays[1], 0],
+    [mac, 'display-out'],
+    [informationDisplays[0], 'display-input'],
+    [informationDisplays[1], 'display-input'],
   ])
 
   return scene
