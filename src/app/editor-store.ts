@@ -2,6 +2,7 @@ import {
   createAutosaveCoordinator,
   type AutosaveCoordinator,
   type AutosaveOptions,
+  type AutosaveStatus,
 } from '../persistence/autosave'
 import { exportScene } from '../persistence/export'
 import { importScene } from '../persistence/import'
@@ -103,6 +104,14 @@ function clone<T>(value: T): T {
   return structuredClone(value)
 }
 
+function freezeDeep<T>(value: T): T {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) freezeDeep(child)
+    Object.freeze(value)
+  }
+  return value
+}
+
 function validDimensions(dimensions: Dimensions): boolean {
   return Object.values(dimensions).every((value) => Number.isFinite(value) && value > 0)
 }
@@ -115,13 +124,38 @@ function makeSnapshot(
   scene: SceneDocument,
   rest: Omit<EditorSnapshot, 'scene'>,
 ): EditorSnapshot {
-  const value = { ...rest, scene: clone(scene) } as EditorSnapshot
+  const sceneCopy = freezeDeep(clone(scene))
+  const selectedEntityIds = Object.freeze([...rest.selectedEntityIds])
+  const outOfBoundsEntityIds = Object.freeze([...rest.outOfBoundsEntityIds])
+  const saveStatus = freezeDeep(clone(rest.saveStatus))
+  const value = {
+    ...rest,
+    scene: sceneCopy,
+    selectedEntityIds,
+    outOfBoundsEntityIds,
+    saveStatus,
+  } as EditorSnapshot
   Object.defineProperty(value, 'scene', {
     enumerable: true,
     configurable: false,
-    get: () => clone(scene),
+    get: () => freezeDeep(clone(sceneCopy)),
   })
-  return value
+  Object.defineProperty(value, 'selectedEntityIds', {
+    enumerable: true,
+    configurable: false,
+    get: () => Object.freeze([...selectedEntityIds]),
+  })
+  Object.defineProperty(value, 'outOfBoundsEntityIds', {
+    enumerable: true,
+    configurable: false,
+    get: () => Object.freeze([...outOfBoundsEntityIds]),
+  })
+  Object.defineProperty(value, 'saveStatus', {
+    enumerable: true,
+    configurable: false,
+    get: () => freezeDeep(clone(saveStatus)),
+  })
+  return Object.freeze(value)
 }
 
 export function createEditorStore(options: EditorStoreOptions = {}): EditorStore {
@@ -133,10 +167,21 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       now: options.now ?? (() => new Date().toISOString()),
     })
   let commandStore = createCommandStore(initialScene, { idFactory })
+  let suppressAutosaveStatus = false
+  let publishStatus: (status: AutosaveStatus) => void = () => undefined
   const autosave =
     options.autosave ??
     (options.storage
-      ? createAutosaveCoordinator(options.storage, options.autosaveOptions)
+      ? createAutosaveCoordinator(options.storage, {
+          ...options.autosaveOptions,
+          onStatusChange: (status) => {
+            try {
+              options.autosaveOptions?.onStatusChange?.(status)
+            } finally {
+              if (!suppressAutosaveStatus) publishStatus(status)
+            }
+          },
+        })
       : undefined)
   const listeners = new Set<() => void>()
   let deletedSelectionId: string | null = null
@@ -154,7 +199,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     mobilePanel: 'none',
   })
 
-  const publish = (errorMessage?: string) => {
+  const publish = (errorMessage?: string, saveStatus?: AutosaveStatus) => {
     const scene = commandStore.scene
     const previousSnapshot = { ...snapshot }
     Reflect.deleteProperty(previousSnapshot, 'scene')
@@ -179,11 +224,12 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       outOfBoundsEntityIds: findOutOfBoundsEntityIds(scene),
       canUndo: commandStore.history.undo.length > 0,
       canRedo: commandStore.history.redo.length > 0,
-      saveStatus: autosave?.getStatus() ?? snapshot.saveStatus,
+      saveStatus: saveStatus ?? autosave?.getStatus() ?? snapshot.saveStatus,
       ...(errorMessage === undefined ? {} : { errorMessage }),
     })
     listeners.forEach((listener) => listener())
   }
+  publishStatus = (status) => publish(undefined, status)
 
   const sceneAction = (
     command: SceneCommand,
@@ -197,7 +243,14 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       return false
     }
     const changed = !sameScene(before, commandStore.scene)
-    if (changed) autosave?.schedule(commandStore.scene)
+    if (changed) {
+      suppressAutosaveStatus = true
+      try {
+        autosave?.schedule(commandStore.scene)
+      } finally {
+        suppressAutosaveStatus = false
+      }
+    }
     afterExecute?.(commandStore.scene)
     publish()
     return changed
@@ -212,7 +265,14 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       selectedEntityIds: [],
       errorMessage: undefined,
     }
-    if (save) autosave?.schedule(scene)
+    if (save) {
+      suppressAutosaveStatus = true
+      try {
+        autosave?.schedule(scene)
+      } finally {
+        suppressAutosaveStatus = false
+      }
+    }
     publish()
     return true
   }
@@ -225,6 +285,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       return () => listeners.delete(listener)
     },
     selectRoom() {
+      deletedSelectionId = null
       snapshot = {
         ...snapshot,
         selectedEntityId: null,
@@ -236,6 +297,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     },
     selectEntity(entityId, additive = false) {
       if (!commandStore.scene.entities.some((entity) => entity.id === entityId)) return
+      deletedSelectionId = null
       const selectedEntityIds = additive
         ? snapshot.selectedEntityIds.includes(entityId)
           ? snapshot.selectedEntityIds.filter((id) => id !== entityId)
@@ -356,7 +418,14 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       if (presetId === null) delete catalog.presetId
       else catalog.presetId = presetId
       const overrides = clone(entity.overrides)
-      if (presetId !== null && 'dimensions' in overrides) delete overrides.dimensions
+      if (presetId !== null) {
+        delete overrides.dimensions
+        if (overrides.geometry && typeof overrides.geometry === 'object') {
+          const geometry = overrides.geometry as JsonObject
+          delete geometry.panel
+          if (Object.keys(geometry).length === 0) delete overrides.geometry
+        }
+      }
       return sceneAction({ type: 'set-catalog', entityId, catalog, overrides })
     },
     setCatalogOverrides(entityId, overrides) {
@@ -378,14 +447,50 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       if (!entity?.catalog || !validDimensions(dimensions)) return false
       const catalog = { ...entity.catalog }
       delete catalog.presetId
+      const definition = CATALOG_DEFINITIONS.find(
+        (candidate) => candidate.id === entity.catalog?.itemId,
+      )
+      const existingGeometry =
+        entity.overrides.geometry &&
+        typeof entity.overrides.geometry === 'object' &&
+        !Array.isArray(entity.overrides.geometry)
+          ? (entity.overrides.geometry as JsonObject)
+          : {}
+      let overrides: JsonObject = {
+        ...clone(entity.overrides),
+        dimensions: clone(dimensions) as unknown as JsonObject,
+      }
+      if (
+        definition?.id === 'display.monitor' &&
+        definition.geometry.kind === 'panel-with-stand'
+      ) {
+        const standAllowance =
+          definition.defaultDimensions.height - definition.geometry.panel.height
+        const panelHeight = dimensions.height - standAllowance
+        if (panelHeight <= 0) return false
+        const existingPanel =
+          existingGeometry.panel &&
+          typeof existingGeometry.panel === 'object' &&
+          !Array.isArray(existingGeometry.panel)
+            ? (existingGeometry.panel as JsonObject)
+            : {}
+        overrides = {
+          ...overrides,
+          geometry: {
+            ...existingGeometry,
+            panel: {
+              ...existingPanel,
+              width: dimensions.width,
+              height: panelHeight,
+            },
+          },
+        }
+      }
       return sceneAction({
         type: 'set-catalog',
         entityId,
         catalog,
-        overrides: {
-          ...clone(entity.overrides),
-          dimensions: clone(dimensions) as unknown as JsonObject,
-        },
+        overrides,
       })
     },
     resetCatalogOverride(entityId, key) {
@@ -437,7 +542,9 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
         .map((id) => commandStore.scene.entities.find((entity) => entity.id === id))
         .filter((entity): entity is Entity => Boolean(entity))
       if (entities.length === 0) return undefined
-      const id = idFactory()
+      const existingIds = new Set(commandStore.scene.entities.map((entity) => entity.id))
+      let id = idFactory()
+      while (existingIds.has(id)) id = idFactory()
       const group: Entity = {
         id,
         kind: 'group',
@@ -479,7 +586,12 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       try {
         const changed = commandStore.undo()
         if (!changed) return false
-        autosave?.schedule(commandStore.scene)
+        suppressAutosaveStatus = true
+        try {
+          autosave?.schedule(commandStore.scene)
+        } finally {
+          suppressAutosaveStatus = false
+        }
         if (
           deletedSelectionId &&
           commandStore.scene.entities.some((entity) => entity.id === deletedSelectionId)
@@ -490,6 +602,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
             primarySelectionId: deletedSelectionId,
             selectedEntityIds: [deletedSelectionId],
           }
+          deletedSelectionId = null
         }
         publish()
         return true
@@ -502,7 +615,12 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       try {
         const changed = commandStore.redo()
         if (!changed) return false
-        autosave?.schedule(commandStore.scene)
+        suppressAutosaveStatus = true
+        try {
+          autosave?.schedule(commandStore.scene)
+        } finally {
+          suppressAutosaveStatus = false
+        }
         publish()
         return true
       } catch (error) {
@@ -545,7 +663,12 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       )
     },
     saveNow() {
-      autosave?.flush()
+      suppressAutosaveStatus = true
+      try {
+        autosave?.flush()
+      } finally {
+        suppressAutosaveStatus = false
+      }
       publish()
     },
     dispose() {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { createEmptyScene } from '../domain/scene'
@@ -71,5 +71,53 @@ describe('EditorShell', () => {
         .dimensions.width,
     ).toBe(before)
     expect(screen.getByText('正の数値を入力してください。')).toBeInTheDocument()
+  })
+
+  it('edits a stable outliner selection numerically and restores it with undo', () => {
+    const store = createStore()
+    render(<EditorShell store={store} />)
+    fireEvent.click(screen.getByRole('button', { name: 'モニターを追加' }))
+    const entityId = store.getSnapshot().selectedEntityId!
+    fireEvent.click(screen.getByRole('tab', { name: 'アウトライナー' }))
+    fireEvent.click(screen.getByTestId(`outliner-entity-${entityId}`))
+    fireEvent.change(screen.getByLabelText('位置 X'), { target: { value: '240' } })
+    fireEvent.blur(screen.getByLabelText('位置 X'))
+    expect(
+      store.getSnapshot().scene.entities.find((entity) => entity.id === entityId)
+        ?.transform.position.x,
+    ).toBe(240)
+    fireEvent.click(screen.getByRole('button', { name: '元に戻す' }))
+    expect(
+      store.getSnapshot().scene.entities.find((entity) => entity.id === entityId)
+        ?.transform.position.x,
+    ).toBe(0)
+    expect(store.getSnapshot().selectedEntityId).toBe(entityId)
+  })
+
+  it('supports additive outliner selection, grouping, mobile sheets, and import errors through DOM semantics', async () => {
+    const store = createStore()
+    render(<EditorShell store={store} />)
+    fireEvent.click(screen.getByRole('button', { name: 'L字昇降デスクを追加' }))
+    const firstId = store.getSnapshot().selectedEntityId!
+    fireEvent.click(screen.getByRole('button', { name: 'チェアを追加' }))
+    const secondId = store.getSnapshot().selectedEntityId!
+    fireEvent.click(screen.getByRole('tab', { name: 'アウトライナー' }))
+    fireEvent.click(screen.getByTestId(`outliner-entity-${firstId}`))
+    fireEvent.click(screen.getByTestId(`outliner-entity-${secondId}`), { ctrlKey: true })
+    expect(screen.getByTestId('group-selected')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('group-selected'))
+    expect(
+      store.getSnapshot().scene.entities.some((entity) => entity.kind === 'group'),
+    ).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'プロパティ' }))
+    expect(screen.getByTestId('mobile-sheet')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'シートを閉じる' }))
+    expect(screen.queryByTestId('mobile-sheet')).not.toBeInTheDocument()
+
+    act(() => {
+      expect(store.importJson('{ invalid json')).toBe(false)
+    })
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
   })
 })

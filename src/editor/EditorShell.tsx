@@ -90,6 +90,11 @@ export function EditorShell({ store }: { store: EditorStore }) {
   return (
     <main className="app-shell">
       <Toolbar store={store} />
+      {snapshot.errorMessage ? (
+        <p className="global-error" role="alert">
+          {snapshot.errorMessage}
+        </p>
+      ) : null}
       <div className="mobile-controls" aria-label="モバイルパネル操作">
         <button
           type="button"

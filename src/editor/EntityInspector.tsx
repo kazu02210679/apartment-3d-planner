@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 
-import { getCatalogDefinition } from '../catalog/catalog'
+import { getCatalogDefinition, resolveCatalogInstance } from '../catalog/catalog'
 import type { Entity, JsonObject, Transform } from '../domain/schema'
 import type { EditorStore } from '../app/editor-store'
 import { NumericField } from './RoomInspector'
@@ -45,9 +45,7 @@ export function EntityInspector({ store }: { store: EditorStore }) {
   const resolved = entity.catalog
     ? (() => {
         try {
-          return store && entity.catalog
-            ? getCatalogDefinition(entity.catalog.itemId)
-            : undefined
+          return resolveCatalogInstance(entity)
         } catch {
           return undefined
         }
@@ -56,10 +54,18 @@ export function EntityInspector({ store }: { store: EditorStore }) {
   const overrides = entity.overrides as JsonObject
   const geometry = (overrides.geometry ?? {}) as JsonObject
   const lDesk = (geometry.lDesk ?? {}) as JsonObject
+  const hasCustomCatalogOverrides = Boolean(
+    entity.overrides.dimensions || entity.overrides.geometry,
+  )
   const monitorPreset =
-    definition?.id === 'display.monitor'
-      ? (entity.catalog?.presetId ?? 'custom')
-      : (entity.catalog?.presetId ?? '')
+    entity.catalog?.presetId ??
+    (definition?.id === 'display.monitor'
+      ? hasCustomCatalogOverrides
+        ? 'custom'
+        : 'monitor-27'
+      : definition?.id === 'desk.l-shaped-sit-stand' && !hasCustomCatalogOverrides
+        ? 'seated'
+        : '')
   const setOverride = (next: JsonObject) => store.setCatalogOverrides(entity.id, next)
   const commitName = () => {
     if (!nameDraft.trim()) {
@@ -107,6 +113,15 @@ export function EntityInspector({ store }: { store: EditorStore }) {
       </label>
       {nameError ? <p className="field-error">{nameError}</p> : null}
       <div className="inspector-actions">
+        {snapshot.selectedEntityIds.length >= 2 ? (
+          <button
+            type="button"
+            data-testid="group-selected"
+            onClick={() => store.groupEntities(snapshot.selectedEntityIds)}
+          >
+            グループ化（{snapshot.selectedEntityIds.length}）
+          </button>
+        ) : null}
         <button type="button" onClick={() => store.setLocked(entity.id, !locked)}>
           {locked ? 'ロック解除' : 'ロック'}
         </button>
@@ -222,9 +237,8 @@ export function EntityInspector({ store }: { store: EditorStore }) {
             ) : null}
             {resolved ? (
               <p className="inspector-note">
-                解決済み寸法: {definition.defaultDimensions.width} ×{' '}
-                {definition.defaultDimensions.depth} ×{' '}
-                {definition.defaultDimensions.height} mm
+                解決済み寸法: {resolved.dimensions.width} × {resolved.dimensions.depth} ×{' '}
+                {resolved.dimensions.height} mm
               </p>
             ) : null}
           </section>
@@ -314,9 +328,7 @@ export function EntityInspector({ store }: { store: EditorStore }) {
         </button>
       ) : null}
       {snapshot.errorMessage ? (
-        <p className="error-banner" role="alert">
-          {snapshot.errorMessage}
-        </p>
+        <p className="error-banner">{snapshot.errorMessage}</p>
       ) : null}
     </section>
   )

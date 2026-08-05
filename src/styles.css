@@ -50,7 +50,8 @@ select:focus-visible {
 }
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
   min-width: 0;
   flex-direction: column;
   background:
@@ -66,6 +67,7 @@ select:focus-visible {
   padding: 16px 22px;
   border-bottom: 1px solid var(--line);
   background: rgba(19, 24, 36, 0.94);
+  flex: 0 0 auto;
 }
 .brand-lockup,
 .header-actions,
@@ -201,11 +203,21 @@ button:disabled {
 .save-state--error {
   color: var(--danger);
 }
+.global-error {
+  margin: 0;
+  border-bottom: 1px solid rgba(255, 141, 145, 0.25);
+  padding: 8px 16px;
+  background: rgba(255, 141, 145, 0.08);
+  color: var(--danger);
+  font-size: 11px;
+}
 .workspace-layout {
   display: grid;
   min-width: 0;
   min-height: 0;
   flex: 1;
+  height: 0;
+  overflow: hidden;
   grid-template-columns: minmax(240px, 260px) minmax(0, 1fr) minmax(320px, 360px);
 }
 .panel {
@@ -215,9 +227,13 @@ button:disabled {
   background: rgba(19, 24, 36, 0.78);
 }
 .panel--left {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-right: 1px solid var(--line);
 }
 .panel--right {
+  overflow: hidden;
   border-left: 1px solid var(--line);
 }
 .panel-heading {
@@ -235,8 +251,12 @@ button:disabled {
   letter-spacing: 0.12em;
 }
 .panel-scroll {
+  min-height: 0;
   overflow: auto;
   scrollbar-color: var(--surface-soft) transparent;
+}
+.panel--left > .panel-scroll {
+  flex: 1;
 }
 .tab-list {
   display: grid;
@@ -391,9 +411,11 @@ input[type='number'] {
 .viewport {
   display: flex;
   min-width: 0;
-  min-height: 580px;
+  min-height: 0;
+  height: 100%;
   flex-direction: column;
   gap: 10px;
+  overflow: hidden;
   padding: 14px;
 }
 .viewport-toolbar {
@@ -433,7 +455,7 @@ input[type='number'] {
   position: relative;
   display: grid;
   min-width: 0;
-  min-height: 480px;
+  min-height: 0;
   flex: 1;
   place-items: center;
   overflow: hidden;
@@ -706,7 +728,10 @@ input[type='number'] {
     padding-inline: 16px;
   }
   .toolbar-text {
-    display: none;
+    display: inline-flex;
+    min-width: 0;
+    padding-inline: 6px;
+    font-size: 10px;
   }
 }
 @media (max-width: 820px) {
@@ -715,31 +740,6 @@ input[type='number'] {
   }
   .panel--right {
     display: none;
-  }
-}
-@media (max-width: 620px) {
-  .app-header {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 13px 12px;
-  }
-  .header-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-  .workspace-layout {
-    display: flex;
-    flex-direction: column;
-  }
-  .panel--left {
-    display: none;
-  }
-  .viewport {
-    min-height: calc(100vh - 150px);
-    padding: 10px;
-  }
-  .canvas-frame {
-    min-height: 430px;
   }
   .mobile-controls {
     display: grid;
@@ -762,6 +762,7 @@ input[type='number'] {
     left: 0;
     display: flex;
     max-height: min(78vh, 700px);
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
     flex-direction: column;
     border: 1px solid var(--line-strong);
     border-bottom: 0;
@@ -774,8 +775,13 @@ input[type='number'] {
     padding: 12px 14px;
     border-bottom: 1px solid var(--line);
   }
+  .sheet-heading button,
+  .mobile-sheet button,
+  .mobile-sheet input,
+  .mobile-sheet select {
+    min-height: 44px;
+  }
   .sheet-heading button {
-    min-height: 36px;
     padding: 0 9px;
     border: 1px solid var(--line-strong);
     border-radius: 6px;
@@ -791,6 +797,39 @@ input[type='number'] {
   }
   .mobile-sheet > .inspector {
     border: 0;
+  }
+}
+@media (max-width: 620px) {
+  .app-shell {
+    height: auto;
+    min-height: 100dvh;
+  }
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 13px 12px;
+  }
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .workspace-layout {
+    display: flex;
+    height: auto;
+    overflow: visible;
+    flex-direction: column;
+  }
+  .panel--left {
+    display: none;
+  }
+  .viewport {
+    height: auto;
+    min-height: calc(100vh - 150px);
+    overflow: visible;
+    padding: 10px;
+  }
+  .canvas-frame {
+    min-height: 430px;
   }
   .field-grid--three {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -812,6 +851,10 @@ input[type='number'] {
   .toolbar-button {
     min-width: 32px;
     padding: 0 6px;
+  }
+  .toolbar-text {
+    flex: 1 1 auto;
+    font-size: 9px;
   }
   .canvas-frame {
     min-height: 360px;

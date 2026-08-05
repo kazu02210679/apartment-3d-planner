@@ -21,10 +21,13 @@ export function Outliner({ store }: { store: EditorStore }) {
           className={`outliner-row ${selected ? 'is-selected' : ''}`}
           type="button"
           aria-current={selected ? 'true' : undefined}
+          aria-pressed={selected}
           aria-label={`${entity.name}を選択`}
           data-testid={`outliner-entity-${entity.id}`}
           style={{ paddingInlineStart: `${10 + level * 16}px` }}
-          onClick={() => store.selectEntity(entity.id)}
+          onClick={(event) =>
+            store.selectEntity(entity.id, event.ctrlKey || event.metaKey)
+          }
         >
           <span className="outliner-kind" aria-hidden="true">
             {entity.kind.slice(0, 1).toUpperCase()}

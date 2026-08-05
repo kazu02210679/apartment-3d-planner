@@ -14,6 +14,7 @@ export interface AutosaveOptions {
   readonly timers?: AutosaveTimers
   readonly now?: () => number
   readonly clock?: () => number
+  readonly onStatusChange?: (status: AutosaveStatus) => void
 }
 
 export type AutosaveState = 'idle' | 'pending' | 'saved' | 'error'
@@ -44,10 +45,21 @@ export function createAutosaveCoordinator(
   const timers = options.timers ?? defaultTimers
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS
   const now = options.now ?? options.clock ?? Date.now
+  const onStatusChange = options.onStatusChange
   let pending: SceneDocument | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
   let status: AutosaveStatus = { state: 'idle' }
+
+  const setStatus = (next: AutosaveStatus) => {
+    if (sameStatus(status, next)) return
+    status = next
+    try {
+      onStatusChange?.({ ...status })
+    } catch {
+      // Status observers must not make editing or persistence fail.
+    }
+  }
 
   const clearTimer = () => {
     if (timer !== undefined) {
@@ -63,13 +75,13 @@ export function createAutosaveCoordinator(
     pending = undefined
     const result = storage.save(scene)
     if (result.ok) {
-      status = {
+      setStatus({
         state: 'saved',
         lastSuccessfulDigest: result.digest,
         lastSuccessfulAt: now(),
-      }
+      })
     } else {
-      status = { state: 'error', error: result.error, ...statusSuccess(status) }
+      setStatus({ state: 'error', error: result.error, ...statusSuccess(status) })
     }
     return { ...status }
   }
@@ -80,7 +92,7 @@ export function createAutosaveCoordinator(
       try {
         pending = normalizeScene(scene)
         clearTimer()
-        status = { state: 'pending', ...statusSuccess(status) }
+        setStatus({ state: 'pending', ...statusSuccess(status) })
         timer = timers.setTimeout(() => {
           timer = undefined
           flush()
@@ -88,7 +100,7 @@ export function createAutosaveCoordinator(
       } catch (error) {
         pending = undefined
         clearTimer()
-        status = { state: 'error', error, ...statusSuccess(status) }
+        setStatus({ state: 'error', error, ...statusSuccess(status) })
       }
     },
     flush,
@@ -96,12 +108,21 @@ export function createAutosaveCoordinator(
       disposed = true
       clearTimer()
       pending = undefined
-      status = { state: 'idle', ...statusSuccess(status) }
+      setStatus({ state: 'idle', ...statusSuccess(status) })
     },
     getStatus() {
       return { ...status }
     },
   }
+}
+
+function sameStatus(left: AutosaveStatus, right: AutosaveStatus): boolean {
+  return (
+    left.state === right.state &&
+    left.error === right.error &&
+    left.lastSuccessfulDigest === right.lastSuccessfulDigest &&
+    left.lastSuccessfulAt === right.lastSuccessfulAt
+  )
 }
 
 function statusSuccess(

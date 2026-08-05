@@ -4,7 +4,7 @@ import { createFutureWorkstationScene } from '../domain/templates/future-worksta
 import { createEmptyScene } from '../domain/scene'
 import { normalizeScene } from '../domain/normalize'
 import type { SceneDocument } from '../domain/schema'
-import { createAutosaveCoordinator } from './autosave'
+import { createAutosaveCoordinator, type AutosaveStatus } from './autosave'
 import { exportScene } from './export'
 import { importScene } from './import'
 import { createMemoryStorage, SceneStorage } from './storage'
@@ -84,7 +84,11 @@ describe('transactional local persistence', () => {
     try {
       const adapter = createMemoryStorage()
       const storage = new SceneStorage(adapter)
-      const coordinator = createAutosaveCoordinator(storage, { debounceMs: 250 })
+      const statusChanges: AutosaveStatus[] = []
+      const coordinator = createAutosaveCoordinator(storage, {
+        debounceMs: 250,
+        onStatusChange: (status) => statusChanges.push(status),
+      })
       coordinator.schedule(makeScene('old'))
       coordinator.schedule(makeScene('new'))
       expect(coordinator.getStatus().state).toBe('pending')
@@ -95,6 +99,7 @@ describe('transactional local persistence', () => {
         JSON.parse(adapter.getItem('home-lab-scene') ?? '').current.metadata.name,
       ).toBe('new')
       expect(coordinator.getStatus().state).toBe('saved')
+      expect(statusChanges.map((status) => status.state)).toEqual(['pending', 'saved'])
 
       adapter.failWrites = true
       coordinator.schedule(makeScene('failed'))
@@ -106,6 +111,15 @@ describe('transactional local persistence', () => {
       expect(coordinator.flush().state).toBe('saved')
       expect(coordinator.getStatus().lastSuccessfulDigest).not.toBe(digestAfterFailure)
       coordinator.dispose()
+      expect(statusChanges.map((status) => status.state)).toEqual([
+        'pending',
+        'saved',
+        'pending',
+        'error',
+        'pending',
+        'saved',
+        'idle',
+      ])
     } finally {
       vi.useRealTimers()
     }
