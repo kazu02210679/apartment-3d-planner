@@ -47,6 +47,17 @@ function digest(value: SceneDocument): string {
   return JSON.stringify(normalizeScene(value))
 }
 
+function expectWorldTransformClose(
+  actual: ReturnType<ReturnType<typeof createCommandStore>['worldTransform']>,
+  expected: ReturnType<ReturnType<typeof createCommandStore>['worldTransform']>,
+): void {
+  for (const axis of ['x', 'y', 'z'] as const)
+    expect(actual.position[axis]).toBeCloseTo(expected.position[axis], 9)
+  actual.rotation.forEach((value, index) =>
+    expect(value).toBeCloseTo(expected.rotation[index], 9),
+  )
+}
+
 describe('CommandStore', () => {
   it('executes every persistent command and undo then redo reproduce its normalized digest', () => {
     const initial = scene()
@@ -94,7 +105,17 @@ describe('CommandStore', () => {
         { type: 'resize-room', dimensions: { width: 500, depth: 500, height: 500 } },
       ],
       ['reparent', { type: 'reparent-entity', entityId: 'two', parentId: 'one' }],
+      ['group', { type: 'group-entities', group: entity('group'), entityIds: ['two'] }],
       ['ungroup', { type: 'ungroup-entity', entityId: 'two' }],
+      [
+        'catalog preset',
+        {
+          type: 'set-catalog',
+          entityId: 'one',
+          itemId: 'desk.l-shaped-sit-stand',
+          presetId: 'standing',
+        },
+      ],
       [
         'add connection',
         {
@@ -253,6 +274,31 @@ describe('CommandStore', () => {
     ).toBe(4)
   })
 
+  it('assigns explicit duplicate root and port IDs to the requested root despite normalized child-first ordering', () => {
+    const initial = scene()
+    initial.entities.push(entity('z-parent'), entity('a-child', 'z-parent'))
+    const store = createCommandStore(initial, { idFactory: ids() })
+
+    store.execute({
+      type: 'duplicate-entity',
+      entityId: 'z-parent',
+      id: 'copied-root',
+      portIds: ['copied-root-a', 'copied-root-b'],
+    })
+
+    const copiedRoot = store.scene.entities.find(
+      (candidate) => candidate.id === 'copied-root',
+    )
+    const copiedChild = store.scene.entities.find(
+      (candidate) => candidate.parentId === 'copied-root',
+    )
+    expect(copiedRoot?.ports.map((port) => port.id)).toEqual([
+      'copied-root-a',
+      'copied-root-b',
+    ])
+    expect(copiedChild?.id).toMatch(/^generated-/)
+  })
+
   it('rejects missing parents and cycles without changing state', () => {
     const initial = scene()
     initial.entities.push(entity('parent'), entity('child', 'parent'))
@@ -272,23 +318,47 @@ describe('CommandStore', () => {
     const parent = entity('parent')
     parent.transform = {
       position: { x: 100, y: 50, z: 25 },
-      rotation: { x: 0, y: 0, z: 90 },
+      rotation: { x: 15, y: -20, z: 90 },
     }
     const child = entity('child')
-    child.transform = { position: { x: 20, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 10 } }
+    child.transform = {
+      position: { x: 20, y: -35, z: 45 },
+      rotation: { x: -10, y: 25, z: 10 },
+    }
     initial.entities.push(parent, child)
     const store = createCommandStore(initial)
     const original = store.worldTransform('child')
     store.execute({ type: 'reparent-entity', entityId: 'child', parentId: 'parent' })
-    expect(store.worldTransform('child').position).toEqual(original.position)
-    expect(store.worldTransform('child').rotation).toEqual(
-      original.rotation.map((value) => expect.closeTo(value, 12)),
-    )
+    expectWorldTransformClose(store.worldTransform('child'), original)
     store.execute({ type: 'ungroup-entity', entityId: 'child' })
-    expect(store.worldTransform('child').position).toEqual(original.position)
-    expect(store.worldTransform('child').rotation).toEqual(
-      original.rotation.map((value) => expect.closeTo(value, 12)),
-    )
+    expectWorldTransformClose(store.worldTransform('child'), original)
+    const group = entity('group')
+    group.transform = {
+      position: { x: -60, y: 30, z: 80 },
+      rotation: { x: 30, y: 20, z: -45 },
+    }
+    store.execute({ type: 'group-entities', group, entityIds: ['child'] })
+    expectWorldTransformClose(store.worldTransform('child'), original)
+    store.execute({ type: 'ungroup-entity', entityId: 'child' })
+    expectWorldTransformClose(store.worldTransform('child'), original)
+  })
+
+  it('resizes only the room while preserving entities and reporting out-of-bounds IDs', () => {
+    const initial = scene()
+    const inside = entity('inside')
+    const outside = entity('outside')
+    outside.transform.position.x = 400
+    initial.entities.push(inside, outside)
+    const store = createCommandStore(initial)
+    const entitiesBefore = store.scene.entities
+
+    const result = store.execute({
+      type: 'resize-room',
+      dimensions: { width: 500, depth: 500, height: 500 },
+    })
+
+    expect(store.scene.entities).toEqual(entitiesBefore)
+    expect(result.outOfBoundsEntityIds).toEqual(['outside'])
   })
 
   it('resolves catalog presets and overrides through the catalog contract', () => {

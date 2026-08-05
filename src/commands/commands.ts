@@ -176,13 +176,13 @@ export function applyCommand(
       const subtree = descendants(scene, command.entityId)
       subtree.forEach((entity) => writable(scene, entity.id))
       const entityIds = new Map(
-        subtree.map((entity, index) => [
+        subtree.map((entity) => [
           entity.id,
-          index === 0 && command.id ? command.id : nextId(),
+          entity.id === command.entityId && command.id ? command.id : nextId(),
         ]),
       )
       const portIds = new Map<string, string>()
-      const copies = subtree.map((entity, entityIndex) => ({
+      const copies = subtree.map((entity) => ({
         ...structuredClone(entity),
         id: entityIds.get(entity.id)!,
         parentId:
@@ -191,7 +191,7 @@ export function applyCommand(
             : entity.parentId,
         ports: entity.ports.map((port, portIndex) => {
           const id =
-            entityIndex === 0 && command.portIds?.[portIndex]
+            entity.id === command.entityId && command.portIds?.[portIndex]
               ? command.portIds[portIndex]
               : nextId()
           portIds.set(port.id, id)
