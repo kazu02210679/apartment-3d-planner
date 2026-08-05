@@ -201,6 +201,20 @@ describe('CommandStore', () => {
     expect(JSON.stringify(store.snapshot())).toBe(before)
   })
 
+  it('rejects missing delete and duplicate roots atomically', () => {
+    const store = createCommandStore(scene())
+    const before = JSON.stringify(store.snapshot())
+
+    expect(() => store.execute({ type: 'delete-entity', entityId: 'missing' })).toThrow(
+      'missing',
+    )
+    expect(JSON.stringify(store.snapshot())).toBe(before)
+    expect(() =>
+      store.execute({ type: 'duplicate-entity', entityId: 'missing' }),
+    ).toThrow('missing')
+    expect(JSON.stringify(store.snapshot())).toBe(before)
+  })
+
   it('rejects locked persistent edits while allowing unlock', () => {
     const initial = scene()
     const locked = entity('locked')

@@ -70,9 +70,10 @@ export class CommandStore {
   }
   updateInteraction(command: SceneCommand): CommandResult {
     if (!this.interaction) throw new Error('No interaction is active.')
+    const nextInteraction = appendTransactionCommand(this.interaction, command)
     const result = applyCommand(this.current, command, this.nextId)
     this.current = result.scene
-    this.interaction = appendTransactionCommand(this.interaction, command)
+    this.interaction = nextInteraction
     return {
       ...result,
       scene: this.scene,

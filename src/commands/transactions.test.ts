@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createCommandStore } from './command-store'
+import { createCommandStore, type SceneCommand } from './command-store'
 import { createEmptyScene } from '../domain/scene'
 import type { Entity } from '../domain/schema'
 
@@ -84,6 +84,28 @@ describe('CommandStore interactions', () => {
     ).toThrow('missing')
     expect(JSON.stringify(subject.snapshot())).toBe(before)
     subject.commitInteraction()
+    expect(subject.history.undo).toHaveLength(0)
+  })
+
+  it('keeps a live interaction usable when command snapshotting rejects non-cloneable input', () => {
+    const subject = store()
+    subject.beginInteraction('drag', { entityId: 'one' })
+    const before = JSON.stringify(subject.snapshot())
+    const uncloneable = {
+      type: 'rename-entity',
+      entityId: 'one',
+      name: 'Leaked',
+      extra: () => undefined,
+    } as unknown as SceneCommand
+
+    expect(() => subject.updateInteraction(uncloneable)).toThrow()
+    expect(JSON.stringify(subject.snapshot())).toBe(before)
+    expect(subject.activeInteraction).toBe(true)
+
+    subject.updateInteraction({ type: 'rename-entity', entityId: 'one', name: 'Safe' })
+    expect(subject.scene.entities[0].name).toBe('Safe')
+    subject.cancelInteraction()
+    expect(subject.scene.entities[0].name).toBe('One')
     expect(subject.history.undo).toHaveLength(0)
   })
 })

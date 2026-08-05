@@ -163,6 +163,7 @@ export function applyCommand(
       break
     }
     case 'delete-entity': {
+      entityAt(scene, command.entityId)
       const subtree = descendants(scene, command.entityId)
       subtree.forEach((entity) => writable(scene, entity.id))
       const ids = new Set(subtree.map((entity) => entity.id))
@@ -173,6 +174,7 @@ export function applyCommand(
       break
     }
     case 'duplicate-entity': {
+      entityAt(scene, command.entityId)
       const subtree = descendants(scene, command.entityId)
       subtree.forEach((entity) => writable(scene, entity.id))
       const entityIds = new Map(
