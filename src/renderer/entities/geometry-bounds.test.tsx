@@ -26,17 +26,39 @@ const models = [
     }}
   />,
   <Monitor dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} />,
+  <Monitor
+    dimensions={dimensions}
+    material={DEFAULT_RENDERER_MATERIAL}
+    mode="calendar"
+  />,
   <MonitorArm dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} />,
   <Computer dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} kind="tower" />,
   <Computer dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} kind="mac" />,
+  <Computer dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} kind="mini" />,
   <Printer dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} />,
   <Lighting dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} />,
   <Lighting dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} room />,
   <Shelf dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} cabinet />,
+  <Shelf dimensions={dimensions} material={DEFAULT_RENDERER_MATERIAL} />,
   <LivingFurniture
     dimensions={dimensions}
     material={DEFAULT_RENDERER_MATERIAL}
     kind="chair"
+  />,
+  <LivingFurniture
+    dimensions={dimensions}
+    material={DEFAULT_RENDERER_MATERIAL}
+    kind="bed"
+  />,
+  <LivingFurniture
+    dimensions={dimensions}
+    material={DEFAULT_RENDERER_MATERIAL}
+    kind="side-table"
+  />,
+  <LivingFurniture
+    dimensions={dimensions}
+    material={DEFAULT_RENDERER_MATERIAL}
+    kind="trash"
   />,
   <LivingFurniture
     dimensions={dimensions}

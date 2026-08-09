@@ -16,6 +16,14 @@ describe('resolveDeskLayout', () => {
     expect(layout.return?.position[0]).toBeLessThan(0)
     expect(layout.topY).toBeCloseTo(0.33)
     expect(layout.origin).toEqual([0, 0, 0])
+    expect(
+      resolveDeskLayout([1.8, 0.72, 1.4], {
+        kind: 'l-desk',
+        mainTop: { width: 1600, depth: 650 },
+        returnTop: { width: 1200, depth: 550 },
+        returnSide: 'right',
+      }).return?.position[0],
+    ).toBeGreaterThan(0)
   })
 
   it('renders a straight desk as one full-footprint top with no return', () => {
