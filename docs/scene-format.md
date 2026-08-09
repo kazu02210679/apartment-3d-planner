@@ -6,7 +6,7 @@
 
 ルートには `schemaVersion`、`metadata`、`room`、`entities`、`connections` が含まれます。エンティティの `id`、接続の `id`、ポート ID、経由点 ID は安定した文字列です。ID を位置や配列順から導出しないでください。
 
-各エンティティは `catalogId` と任意の `catalogRevision` を持ち、ローカル変換、寸法オーバーライド、親 ID、表示状態、プロパティを記録します。変換の位置と寸法は mm、回転は度です。親子関係は `parentId` で表し、親の回転・位置は子のローカル座標へ適用されます。
+各エンティティは `catalog.itemId`、`catalog.revision`、任意の `catalog.presetId` を持ちます。`overrides` はカタログ既定値からの明示的な上書き、`properties` は品目固有の検証済みデータ、`extensions` は将来互換の拡張データです。ローカル変換、寸法、親 ID、表示状態、ポートもエンティティに記録します。変換の位置と寸法は mm、回転は度です。親子関係は `parentId` で表し、親の回転・位置は子のローカル座標へ適用されます。
 
 ## カタログ、ポート、接続
 

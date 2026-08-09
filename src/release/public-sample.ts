@@ -23,3 +23,7 @@ export function createPublicSampleScene(): SceneDocument {
 export function exportPublicSampleScene(): string {
   return exportScene(createPublicSampleScene())
 }
+
+export function isCanonicalPublicSample(value: string): boolean {
+  return value.replace(/\r\n/g, '\n') === exportPublicSampleScene()
+}

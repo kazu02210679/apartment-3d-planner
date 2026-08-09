@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { exportPublicSampleScene } from './public-sample'
+import { exportPublicSampleScene, isCanonicalPublicSample } from './public-sample'
 import { importScene } from '../persistence/import'
 
 const samplePath = resolve(
@@ -19,6 +19,9 @@ describe('public Future Workstation sample', () => {
     expect(imported.ok).toBe(true)
     if (!imported.ok) return
     expect(imported.scene.metadata.name).toContain('Future Workstation')
-    expect(committed).toBe(exportPublicSampleScene())
+    expect(isCanonicalPublicSample(committed)).toBe(true)
+    expect(
+      isCanonicalPublicSample(exportPublicSampleScene().replace(/\n/g, '\r\n')),
+    ).toBe(true)
   })
 })

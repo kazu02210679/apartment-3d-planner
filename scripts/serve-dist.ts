@@ -24,11 +24,18 @@ function safeFile(pathname: string): string | undefined {
 
 createServer((request, response) => {
   const requestPath = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
+  const isRootRequest = requestPath === '/'
+  const isSubpathRequest =
+    requestPath === '/apartment-planner' || requestPath.startsWith(prefix)
+  if (!isRootRequest && !isSubpathRequest) {
+    response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+    response.end('Not found')
+    return
+  }
+
   const relativePath = requestPath.startsWith(prefix)
     ? requestPath.slice(prefix.length)
-    : requestPath === '/apartment-planner'
-      ? ''
-      : requestPath
+    : ''
   const candidate = safeFile(relativePath)
   const isAssetRequest = relativePath.startsWith('assets/')
   const file =

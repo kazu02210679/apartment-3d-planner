@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { exportPublicSampleScene } from '../src/release/public-sample'
+import { isCanonicalPublicSample } from '../src/release/public-sample'
 import { scanRepositoryFiles } from '../src/release/repository-check'
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -21,7 +21,7 @@ for (const path of tracked) {
 
 const samplePath = 'public/samples/future-workstation-apartment.json'
 const violations = scanRepositoryFiles(files)
-if (files.get(samplePath) !== exportPublicSampleScene()) {
+if (!isCanonicalPublicSample(files.get(samplePath) ?? '')) {
   violations.push(`${samplePath}:stale-or-noncanonical-sample`)
 }
 

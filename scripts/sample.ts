@@ -2,7 +2,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { exportPublicSampleScene } from '../src/release/public-sample'
+import {
+  exportPublicSampleScene,
+  isCanonicalPublicSample,
+} from '../src/release/public-sample'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const samplePath = resolve(
@@ -25,7 +28,7 @@ if (mode === 'generate') {
       'The committed public sample is missing. Run npm run sample:generate.',
     )
   }
-  if (committed !== generated) {
+  if (!isCanonicalPublicSample(committed)) {
     throw new Error('The committed public sample is stale. Run npm run sample:generate.')
   }
   process.stdout.write('Public Future Workstation sample is canonical.\n')
