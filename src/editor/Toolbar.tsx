@@ -63,16 +63,16 @@ export function Toolbar({ store }: { store: EditorStore }) {
         <div className="tool-switch" role="group" aria-label="Direct manipulation tool">
           {(
             [
-              ['move', 'Move'],
-              ['rotate', 'Rotate'],
-              ['resize', 'Resize'],
+              ['move', '移動'],
+              ['rotate', '回転'],
+              ['resize', 'サイズ'],
             ] as const
           ).map(([tool, label]) => (
             <button
               key={tool}
               className={`mode-button ${snapshot.activeTool === tool ? 'is-active' : ''}`}
               type="button"
-              aria-label={label}
+              aria-label={`${label}ツール`}
               aria-pressed={snapshot.activeTool === tool}
               disabled={snapshot.mode !== 'edit'}
               onClick={() => store.setActiveTool(tool)}
@@ -82,9 +82,9 @@ export function Toolbar({ store }: { store: EditorStore }) {
           ))}
         </div>
         <label className="toolbar-select">
-          <span>Move snap</span>
+          <span>移動スナップ</span>
           <select
-            aria-label="Move snap"
+            aria-label="移動スナップ"
             value={snapshot.translationSnap}
             onChange={(event) => store.setTranslationSnap(Number(event.target.value))}
           >
@@ -95,9 +95,9 @@ export function Toolbar({ store }: { store: EditorStore }) {
           </select>
         </label>
         <label className="toolbar-select">
-          <span>Rotate snap</span>
+          <span>回転スナップ</span>
           <select
-            aria-label="Rotate snap"
+            aria-label="回転スナップ"
             value={snapshot.rotationSnap}
             onChange={(event) => store.setRotationSnap(Number(event.target.value))}
           >
@@ -113,7 +113,7 @@ export function Toolbar({ store }: { store: EditorStore }) {
           aria-pressed={snapshot.floorSnap}
           onClick={() => store.setFloorSnap(!snapshot.floorSnap)}
         >
-          Floor snap
+          床にスナップ
         </button>
         <button
           className="toolbar-button"

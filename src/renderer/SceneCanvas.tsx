@@ -48,7 +48,8 @@ export function SceneCanvas({
     const entity = id
       ? snapshot.scene.entities.find((candidate) => candidate.id === id)
       : undefined
-    if (!id || !entity || snapshot.mode !== 'edit') return
+    if (!id || !entity || entity.locked || !entity.visible || snapshot.mode !== 'edit')
+      return
     const controller = createInteractionController(store)
     if (!controller.start(id, 'move')) return
     const transform = toRendererTransform(entity.transform)
@@ -65,11 +66,21 @@ export function SceneCanvas({
       <nav className="scene-camera-controls" aria-label="Camera controls">
         <button
           type="button"
-          aria-label="Nudge selected right"
-          disabled={!available || snapshot.mode !== 'edit' || !snapshot.selectedEntityId}
+          aria-label="選択対象を右へ移動"
+          disabled={
+            !available ||
+            snapshot.mode !== 'edit' ||
+            !snapshot.selectedEntityId ||
+            !snapshot.scene.entities.some(
+              (entity) =>
+                entity.id === snapshot.selectedEntityId &&
+                entity.visible &&
+                !entity.locked,
+            )
+          }
           onClick={nudgeSelected}
         >
-          Nudge +X
+          右へ移動
         </button>
         <button
           type="button"

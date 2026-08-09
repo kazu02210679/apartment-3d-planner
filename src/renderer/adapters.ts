@@ -21,7 +21,7 @@ export function millimetresToRendererLength(millimetres: number): number {
   return round(millimetres * METRES_PER_MILLIMETRE, RENDERER_PRECISION)
 }
 
-function rendererLengthToMillimetres(rendererLength: number): number {
+export function rendererLengthToMillimetres(rendererLength: number): number {
   return round(rendererLength / METRES_PER_MILLIMETRE, PERSISTED_PRECISION)
 }
 

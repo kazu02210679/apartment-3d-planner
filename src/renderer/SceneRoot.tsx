@@ -83,6 +83,9 @@ export function SceneRoot({
   const selectedEntity = selectedId
     ? scene.entities.find((entity) => entity.id === selectedId)
     : undefined
+  const canDirectManipulate = Boolean(
+    selectedEntity && selectedEntity.visible && !selectedEntity.locked,
+  )
   const canResize = Boolean(
     selectedEntity &&
     selectedEntity.visible &&
@@ -129,11 +132,13 @@ export function SceneRoot({
       {entity.id === selectedId &&
       activeTool === 'resize' &&
       canResize &&
+      selectedObject &&
       resolvedSelectedDimensions ? (
         <ResizeHandles
           entityId={entity.id}
+          entityObject={selectedObject}
           dimensions={resolvedSelectedDimensions}
-          enabled={mode === 'edit'}
+          enabled={mode === 'edit' && canDirectManipulate}
           controller={controller}
         />
       ) : null}
@@ -159,7 +164,7 @@ export function SceneRoot({
           entityId={selectedId}
           object={selectedObject}
           tool={activeTool}
-          enabled={mode === 'edit'}
+          enabled={mode === 'edit' && canDirectManipulate}
           controller={controller}
           onOrbitEnabledChange={setOrbitEnabled}
         />

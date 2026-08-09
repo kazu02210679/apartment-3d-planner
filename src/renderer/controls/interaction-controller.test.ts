@@ -147,4 +147,29 @@ describe('interaction controller', () => {
     expect(monitor.ports).toEqual(before.ports)
     expect(monitor.overrides.dimensions).toEqual({ width: 800, depth: 250, height: 600 })
   })
+
+  it('grows and shrinks a rotated entity from its positive local handle while preserving the opposite face', () => {
+    const entity = genericEntity()
+    entity.transform.rotation.z = 90
+    const store = storeWithEntity(entity)
+    const controller = createInteractionController(store)
+
+    expect(controller.start('chair', 'resize')).toBe(true)
+    expect(controller.resizeByLocalDelta(0, 0.1)).toBe(true)
+    expect(store.getSnapshot().scene.entities[0]).toMatchObject({
+      dimensions: { width: 600, depth: 500, height: 1000 },
+      transform: { position: { x: 0, y: 550, z: 0 } },
+    })
+    expect(controller.resizeByLocalDelta(0, -0.05)).toBe(true)
+    expect(store.getSnapshot().scene.entities[0]).toMatchObject({
+      dimensions: { width: 450, depth: 500, height: 1000 },
+      transform: { position: { x: 0, y: 475, z: 0 } },
+    })
+    expect(controller.commit()).toBe(true)
+    expect(store.undo()).toBe(true)
+    expect(store.getSnapshot().scene.entities[0]).toMatchObject({
+      dimensions: { width: 500, depth: 500, height: 1000 },
+      transform: { position: { x: 0, y: 500, z: 0 } },
+    })
+  })
 })
