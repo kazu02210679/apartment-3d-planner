@@ -25,5 +25,5 @@ export function exportPublicSampleScene(): string {
 }
 
 export function isCanonicalPublicSample(value: string): boolean {
-  return value.replace(/\r\n/g, '\n') === exportPublicSampleScene()
+  return value === exportPublicSampleScene()
 }

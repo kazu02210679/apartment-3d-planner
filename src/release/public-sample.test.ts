@@ -22,6 +22,6 @@ describe('public Future Workstation sample', () => {
     expect(isCanonicalPublicSample(committed)).toBe(true)
     expect(
       isCanonicalPublicSample(exportPublicSampleScene().replace(/\n/g, '\r\n')),
-    ).toBe(true)
+    ).toBe(false)
   })
 })
