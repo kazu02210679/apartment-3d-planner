@@ -1,0 +1,56 @@
+# Apartment 3D Planner
+
+ローカルファーストで使える、住まいとワークステーションのための 3D 配置プランナーです。家具、機器、ポート、ケーブルをミリメートル単位で配置し、ブラウザ内で保存・書き出し・読み込みできます。
+
+現在はサーバー、アカウント、分析、外部アセット取得を持ちません。シーンはブラウザの Local Storage に保存され、必要に応じて JSON として手元に書き出せます。
+
+## すぐに試す
+
+Node.js 22 以降と Chromium が必要です。
+
+```sh
+npm ci
+npm run dev
+```
+
+開発サーバーに表示されたローカル URL をブラウザで開きます。公開用の決定的サンプルはソースツリーでは [`public/samples/future-workstation-apartment.json`](public/samples/future-workstation-apartment.json) にあります。ビルドを相対パス配下へ配置した場合の URL は `./samples/future-workstation-apartment.json`（アプリの配置先からの相対 URL）です。
+
+```sh
+npm run sample:check
+npm run check:repo
+npm run build
+npm run test:e2e
+```
+
+`npm run sample:generate` は同じ Future Workstation テンプレート、固定 ID、固定時刻からサンプルを再生成します。意図しないサンプル差分は `sample:check` で検出されます。
+
+## 主な操作
+
+- カタログから家具・機器・ケーブルを追加し、アウトライナーまたはキャンバスで選択します。
+- 移動、回転、サイズ変更、ロック・非表示を編集します。数値入力は Enter で確定できます。
+- ケーブルモードではポートを接続し、自由端と経由点を編集できます。Esc は編集中のドラフトを破棄します。
+- 編集、プレビュー、JSON のエクスポート／インポート、Undo／Redo を使えます。
+
+## ドキュメント
+
+- [アーキテクチャ](docs/architecture.md)
+- [シーン JSON 形式](docs/scene-format.md)
+- [カタログ拡張ガイド](docs/catalog-extension.md)
+- [アセットとライセンス](docs/assets.md)
+- [第三者ソフトウェア通知](THIRD_PARTY_NOTICES.md)
+- [受け入れワークフロー報告](docs/reports/task-11-report.md)
+- [公開リリース準備報告](docs/reports/task-12-report.md)
+
+## 開発と検証
+
+`npm run test` は単体・統合テスト、`npm run test:e2e` は本番ビルドを Chromium で確認します。後者は `dist` を `/apartment-planner/` 配下でも配信する小さな静的サーバーを使い、初期チャンクと遅延読み込みされる 3D レンダラーの両方を確認します。
+
+`npm run check:repo` は追跡済みファイルだけを対象に、公開必須ファイル、相対 Markdown リンク、資格情報らしいファイル・文字列、ローカル絶対パス、実行時ネットワーク API、未記載のバイナリアセット、古い公開サンプルを検査します。テスト、fixture、文書例、検査器自身の正規表現は限定的に除外します。失敗時に値そのものは出力しません。
+
+## 制約と注意
+
+これは視覚的な配置計画ツールです。建築確認、耐荷重、避難、電気容量、配線規格、ケーブル負荷、施工可否を検証するものではありません。製品 URL は説明用の不活性な文字列で、アプリは取得しません。ホスト型同期、バックエンド、共同編集は提供していません。
+
+## ライセンス
+
+このリポジトリのソースコードは [MIT License](LICENSE) です。バンドルされる第三者依存関係については [第三者ソフトウェア通知](THIRD_PARTY_NOTICES.md) を参照してください。

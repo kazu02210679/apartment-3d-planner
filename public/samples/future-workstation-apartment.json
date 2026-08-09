@@ -1,0 +1,1561 @@
+{
+  "id": "future-workstation-0001",
+  "format": "home-lab-scene",
+  "schemaVersion": 1,
+  "metadata": {
+    "name": "Future Workstation Apartment",
+    "createdAt": "2026-08-06T00:00:00.000Z",
+    "updatedAt": "2026-08-06T00:00:00.000Z",
+    "description": "Deterministic public sample for the local-first planner.",
+    "tags": [
+      "sample",
+      "future-workstation",
+      "apartment"
+    ],
+    "extensions": {}
+  },
+  "room": {
+    "id": "future-workstation-0002",
+    "name": "部屋",
+    "preset": "6-tatami",
+    "width": 2700,
+    "depth": 3600,
+    "height": 2400,
+    "extensions": {}
+  },
+  "entities": [
+    {
+      "id": "future-workstation-0003",
+      "kind": "desk",
+      "name": "L-shaped sit-stand desk",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 0,
+          "y": 360,
+          "z": 0
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 1800,
+        "depth": 1400,
+        "height": 720
+      },
+      "catalog": {
+        "itemId": "desk.l-shaped-sit-stand",
+        "revision": "1",
+        "presetId": "seated",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0004",
+          "name": "Cable tray",
+          "kind": "cable",
+          "extensions": {
+            "catalogPortId": "cable-tray"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0005",
+      "kind": "seating",
+      "name": "Task chair",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 0,
+          "y": 575,
+          "z": 900
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 650,
+        "depth": 650,
+        "height": 1150
+      },
+      "catalog": {
+        "itemId": "seating.chair",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0006",
+      "kind": "computer",
+      "name": "Windows workstation",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -700,
+          "y": 225,
+          "z": 250
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 220,
+        "depth": 450,
+        "height": 450
+      },
+      "catalog": {
+        "itemId": "computer.windows-tower",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0007",
+          "name": "Power input",
+          "kind": "power",
+          "position": {
+            "x": -40,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "power-in"
+          }
+        },
+        {
+          "id": "future-workstation-0008",
+          "name": "Display output",
+          "kind": "display",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "display-out"
+          }
+        },
+        {
+          "id": "future-workstation-0009",
+          "name": "Network",
+          "kind": "network",
+          "position": {
+            "x": 40,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "network"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0010",
+      "kind": "computer",
+      "name": "Mac workstation",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 700,
+          "y": 30,
+          "z": 250
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 300,
+        "depth": 250,
+        "height": 60
+      },
+      "catalog": {
+        "itemId": "computer.mac",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0011",
+          "name": "Power input",
+          "kind": "power",
+          "position": {
+            "x": -40,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "power-in"
+          }
+        },
+        {
+          "id": "future-workstation-0012",
+          "name": "Display output",
+          "kind": "display",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "display-out"
+          }
+        },
+        {
+          "id": "future-workstation-0013",
+          "name": "Network",
+          "kind": "network",
+          "position": {
+            "x": 40,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "network"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0014",
+      "kind": "display",
+      "name": "Main monitor 1",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -450,
+          "y": 950,
+          "z": -250
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 598,
+        "depth": 220,
+        "height": 456
+      },
+      "catalog": {
+        "itemId": "display.monitor",
+        "revision": "1",
+        "presetId": "monitor-27",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0015",
+          "name": "Display input",
+          "kind": "display",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "display-input"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0016",
+      "kind": "display",
+      "name": "Main monitor 2",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -150,
+          "y": 950,
+          "z": -250
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 598,
+        "depth": 220,
+        "height": 456
+      },
+      "catalog": {
+        "itemId": "display.monitor",
+        "revision": "1",
+        "presetId": "monitor-27",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0017",
+          "name": "Display input",
+          "kind": "display",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "display-input"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0018",
+      "kind": "display",
+      "name": "Main monitor 3",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 150,
+          "y": 950,
+          "z": -250
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 598,
+        "depth": 220,
+        "height": 456
+      },
+      "catalog": {
+        "itemId": "display.monitor",
+        "revision": "1",
+        "presetId": "monitor-27",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0019",
+          "name": "Display input",
+          "kind": "display",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "display-input"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0020",
+      "kind": "display",
+      "name": "Main monitor 4",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 450,
+          "y": 950,
+          "z": -250
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 598,
+        "depth": 220,
+        "height": 456
+      },
+      "catalog": {
+        "itemId": "display.monitor",
+        "revision": "1",
+        "presetId": "monitor-27",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0021",
+          "name": "Display input",
+          "kind": "display",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "display-input"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0022",
+      "kind": "display",
+      "name": "Side information display 1",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -1050,
+          "y": 1000,
+          "z": -250
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 500,
+        "depth": 100,
+        "height": 300
+      },
+      "catalog": {
+        "itemId": "display.information",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0023",
+          "name": "Display input",
+          "kind": "display",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "display-input"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0024",
+      "kind": "display",
+      "name": "Side information display 2",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 1050,
+          "y": 1000,
+          "z": -250
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 500,
+        "depth": 100,
+        "height": 300
+      },
+      "catalog": {
+        "itemId": "display.information",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0025",
+          "name": "Display input",
+          "kind": "display",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "display-input"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0026",
+      "kind": "mount",
+      "name": "Monitor arm 1",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -750,
+          "y": 950,
+          "z": -100
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 120,
+        "depth": 120,
+        "height": 450
+      },
+      "catalog": {
+        "itemId": "mount.monitor-arm",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0027",
+      "kind": "mount",
+      "name": "Monitor arm 2",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -450,
+          "y": 950,
+          "z": -100
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 120,
+        "depth": 120,
+        "height": 450
+      },
+      "catalog": {
+        "itemId": "mount.monitor-arm",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0028",
+      "kind": "mount",
+      "name": "Monitor arm 3",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -150,
+          "y": 950,
+          "z": -100
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 120,
+        "depth": 120,
+        "height": 450
+      },
+      "catalog": {
+        "itemId": "mount.monitor-arm",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0029",
+      "kind": "mount",
+      "name": "Monitor arm 4",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 150,
+          "y": 950,
+          "z": -100
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 120,
+        "depth": 120,
+        "height": 450
+      },
+      "catalog": {
+        "itemId": "mount.monitor-arm",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0030",
+      "kind": "mount",
+      "name": "Monitor arm 5",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 450,
+          "y": 950,
+          "z": -100
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 120,
+        "depth": 120,
+        "height": 450
+      },
+      "catalog": {
+        "itemId": "mount.monitor-arm",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0031",
+      "kind": "mount",
+      "name": "Monitor arm 6",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 750,
+          "y": 950,
+          "z": -100
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 120,
+        "depth": 120,
+        "height": 450
+      },
+      "catalog": {
+        "itemId": "mount.monitor-arm",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0032",
+      "kind": "light",
+      "name": "Display light 1",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -400,
+          "y": 1150,
+          "z": -80
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 450,
+        "depth": 80,
+        "height": 50
+      },
+      "catalog": {
+        "itemId": "light.display",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0033",
+          "name": "Power input",
+          "kind": "power",
+          "position": {
+            "x": -40,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "power-in"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0034",
+      "kind": "light",
+      "name": "Display light 2",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 400,
+          "y": 1150,
+          "z": -80
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 450,
+        "depth": 80,
+        "height": 50
+      },
+      "catalog": {
+        "itemId": "light.display",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0035",
+          "name": "Power input",
+          "kind": "power",
+          "position": {
+            "x": -40,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "power-in"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0036",
+      "kind": "desk",
+      "name": "Desk shelf",
+      "parentId": "future-workstation-0003",
+      "transform": {
+        "position": {
+          "x": 0,
+          "y": 580,
+          "z": -150
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 900,
+        "depth": 250,
+        "height": 400
+      },
+      "catalog": {
+        "itemId": "desk.shelf",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0037",
+      "kind": "storage",
+      "name": "Storage cabinet",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 900,
+          "y": 600,
+          "z": 1100
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 800,
+        "depth": 400,
+        "height": 1200
+      },
+      "catalog": {
+        "itemId": "storage.shelf-cabinet",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0038",
+      "kind": "printer",
+      "name": "Printer",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 850,
+          "y": 150,
+          "z": 500
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 500,
+        "depth": 400,
+        "height": 300
+      },
+      "catalog": {
+        "itemId": "printer.generic",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0039",
+      "kind": "waste",
+      "name": "Trash bin",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -1050,
+          "y": 250,
+          "z": 900
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 300,
+        "depth": 300,
+        "height": 500
+      },
+      "catalog": {
+        "itemId": "waste.trash-bin",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0040",
+      "kind": "power",
+      "name": "Power strip one",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -400,
+          "y": 35,
+          "z": 200
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 350,
+        "depth": 60,
+        "height": 35
+      },
+      "catalog": {
+        "itemId": "power.strip",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0041",
+          "name": "Outlet",
+          "kind": "power",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "outlet"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0042",
+      "kind": "power",
+      "name": "Power strip two",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 400,
+          "y": 35,
+          "z": 200
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 350,
+        "depth": 60,
+        "height": 35
+      },
+      "catalog": {
+        "itemId": "power.strip",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0043",
+          "name": "Outlet",
+          "kind": "power",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "outlet"
+          }
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0044",
+      "kind": "cable",
+      "name": "Power cable",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -200,
+          "y": 20,
+          "z": 300
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 1000,
+        "depth": 20,
+        "height": 20
+      },
+      "catalog": {
+        "itemId": "cable.generic",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0045",
+          "name": "End A",
+          "kind": "cable",
+          "position": {
+            "x": -450,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "end-a"
+          }
+        },
+        {
+          "id": "future-workstation-0046",
+          "name": "End B",
+          "kind": "cable",
+          "position": {
+            "x": 450,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "end-b"
+          }
+        }
+      ],
+      "properties": {
+        "routing": {
+          "diameterMm": 8,
+          "kind": "power",
+          "version": 1,
+          "waypoints": []
+        }
+      },
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0047",
+      "kind": "cable",
+      "name": "Display cable",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 0,
+          "y": 700,
+          "z": -200
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 1000,
+        "depth": 20,
+        "height": 20
+      },
+      "catalog": {
+        "itemId": "cable.generic",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0048",
+          "name": "End A",
+          "kind": "cable",
+          "position": {
+            "x": -450,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "end-a"
+          }
+        },
+        {
+          "id": "future-workstation-0049",
+          "name": "End B",
+          "kind": "cable",
+          "position": {
+            "x": 450,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "end-b"
+          }
+        }
+      ],
+      "properties": {
+        "routing": {
+          "diameterMm": 7,
+          "kind": "display",
+          "version": 1,
+          "waypoints": []
+        }
+      },
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0050",
+      "kind": "cable",
+      "name": "Network cable",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 700,
+          "y": 30,
+          "z": 350
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 1000,
+        "depth": 20,
+        "height": 20
+      },
+      "catalog": {
+        "itemId": "cable.generic",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "future-workstation-0051",
+          "name": "End A",
+          "kind": "cable",
+          "position": {
+            "x": -450,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "end-a"
+          }
+        },
+        {
+          "id": "future-workstation-0052",
+          "name": "End B",
+          "kind": "cable",
+          "position": {
+            "x": 450,
+            "y": 0,
+            "z": 0
+          },
+          "extensions": {
+            "catalogPortId": "end-b"
+          }
+        }
+      ],
+      "properties": {
+        "routing": {
+          "diameterMm": 6,
+          "kind": "network",
+          "version": 1,
+          "waypoints": []
+        }
+      },
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0053",
+      "kind": "sleep",
+      "name": "Futon",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 700,
+          "y": 175,
+          "z": 700
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 1000,
+        "depth": 2000,
+        "height": 350
+      },
+      "catalog": {
+        "itemId": "sleep.bed-futon",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0054",
+      "kind": "table",
+      "name": "Side table",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": -700,
+          "y": 250,
+          "z": 1300
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 450,
+        "depth": 450,
+        "height": 500
+      },
+      "catalog": {
+        "itemId": "table.side",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0055",
+      "kind": "light",
+      "name": "Room light",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 0,
+          "y": 1150,
+          "z": 1000
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 600,
+        "depth": 600,
+        "height": 100
+      },
+      "catalog": {
+        "itemId": "light.room",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0056",
+      "kind": "storage",
+      "name": "Clothes storage",
+      "parentId": null,
+      "transform": {
+        "position": {
+          "x": 900,
+          "y": 300,
+          "z": -1200
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "dimensions": {
+        "width": 800,
+        "depth": 500,
+        "height": 1800
+      },
+      "catalog": {
+        "itemId": "storage.clothes",
+        "revision": "1",
+        "extensions": {}
+      },
+      "overrides": {},
+      "ports": [],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    }
+  ],
+  "connections": [
+    {
+      "id": "future-workstation-0057",
+      "endpoints": [
+        {
+          "entityId": "future-workstation-0044",
+          "portId": "future-workstation-0045"
+        },
+        {
+          "entityId": "future-workstation-0040",
+          "portId": "future-workstation-0041"
+        }
+      ],
+      "kind": "power",
+      "properties": {},
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0058",
+      "endpoints": [
+        {
+          "entityId": "future-workstation-0044",
+          "portId": "future-workstation-0046"
+        },
+        {
+          "entityId": "future-workstation-0006",
+          "portId": "future-workstation-0007"
+        }
+      ],
+      "kind": "power",
+      "properties": {},
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0059",
+      "endpoints": [
+        {
+          "entityId": "future-workstation-0042",
+          "portId": "future-workstation-0043"
+        },
+        {
+          "entityId": "future-workstation-0010",
+          "portId": "future-workstation-0011"
+        },
+        {
+          "entityId": "future-workstation-0032",
+          "portId": "future-workstation-0033"
+        },
+        {
+          "entityId": "future-workstation-0034",
+          "portId": "future-workstation-0035"
+        }
+      ],
+      "kind": "power",
+      "properties": {},
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0060",
+      "endpoints": [
+        {
+          "entityId": "future-workstation-0047",
+          "portId": "future-workstation-0048"
+        },
+        {
+          "entityId": "future-workstation-0006",
+          "portId": "future-workstation-0008"
+        }
+      ],
+      "kind": "display",
+      "properties": {},
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0061",
+      "endpoints": [
+        {
+          "entityId": "future-workstation-0047",
+          "portId": "future-workstation-0049"
+        },
+        {
+          "entityId": "future-workstation-0014",
+          "portId": "future-workstation-0015"
+        }
+      ],
+      "kind": "display",
+      "properties": {},
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0062",
+      "endpoints": [
+        {
+          "entityId": "future-workstation-0050",
+          "portId": "future-workstation-0051"
+        },
+        {
+          "entityId": "future-workstation-0006",
+          "portId": "future-workstation-0009"
+        }
+      ],
+      "kind": "network",
+      "properties": {},
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0063",
+      "endpoints": [
+        {
+          "entityId": "future-workstation-0050",
+          "portId": "future-workstation-0052"
+        },
+        {
+          "entityId": "future-workstation-0010",
+          "portId": "future-workstation-0013"
+        }
+      ],
+      "kind": "network",
+      "properties": {},
+      "extensions": {}
+    },
+    {
+      "id": "future-workstation-0064",
+      "endpoints": [
+        {
+          "entityId": "future-workstation-0010",
+          "portId": "future-workstation-0012"
+        },
+        {
+          "entityId": "future-workstation-0022",
+          "portId": "future-workstation-0023"
+        },
+        {
+          "entityId": "future-workstation-0024",
+          "portId": "future-workstation-0025"
+        }
+      ],
+      "kind": "display",
+      "properties": {},
+      "extensions": {}
+    }
+  ],
+  "extensions": {}
+}

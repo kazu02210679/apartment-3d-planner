@@ -1,0 +1,85 @@
+{
+  "format": "home-lab-scene",
+  "schemaVersion": 0,
+  "id": "legacy-scene-1",
+  "name": "Legacy study",
+  "createdAt": "2026-08-01T00:00:00.000Z",
+  "updatedAt": "2026-08-02T00:00:00.000Z",
+  "description": "A v0 fixture with a nested room dimensions object.",
+  "tags": ["legacy", "fixture"],
+  "room": {
+    "id": "legacy-room-1",
+    "name": "Study",
+    "preset": "6-tatami",
+    "dimensions": { "width": 2700, "depth": 3600, "height": 2400 },
+    "extensions": { "legacyRoom": true }
+  },
+  "entities": [
+    {
+      "id": "legacy-desk-1",
+      "kind": "desk",
+      "name": "Legacy desk",
+      "parentId": null,
+      "transform": {
+        "position": { "x": 0, "y": 400, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 }
+      },
+      "dimensions": { "width": 1200, "depth": 600, "height": 750 },
+      "catalog": {
+        "itemId": "desk.basic",
+        "revision": "legacy-1",
+        "extensions": { "catalogSource": "fixture" }
+      },
+      "overrides": { "finish": "oak" },
+      "ports": [
+        {
+          "id": "legacy-desk-power",
+          "name": "Power",
+          "kind": "power",
+          "extensions": { "legacyPort": true }
+        }
+      ],
+      "properties": { "legacyProperty": "preserved" },
+      "visible": true,
+      "locked": false,
+      "extensions": { "legacyEntity": true }
+    },
+    {
+      "id": "legacy-lamp-1",
+      "kind": "light",
+      "name": "Legacy lamp",
+      "parentId": null,
+      "transform": {
+        "position": { "x": 200, "y": 900, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 }
+      },
+      "dimensions": { "width": 100, "depth": 100, "height": 300 },
+      "overrides": {},
+      "ports": [
+        {
+          "id": "legacy-lamp-power",
+          "name": "Power",
+          "kind": "power",
+          "extensions": {}
+        }
+      ],
+      "properties": {},
+      "visible": true,
+      "locked": false,
+      "extensions": {}
+    }
+  ],
+  "connections": [
+    {
+      "id": "legacy-connection-1",
+      "kind": "power",
+      "endpoints": [
+        { "entityId": "legacy-desk-1", "portId": "legacy-desk-power" },
+        { "entityId": "legacy-lamp-1", "portId": "legacy-lamp-power" }
+      ],
+      "properties": { "legacyCable": "kept" },
+      "extensions": {}
+    }
+  ],
+  "extensions": { "legacyDocument": true }
+}
