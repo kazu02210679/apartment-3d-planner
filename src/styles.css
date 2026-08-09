@@ -163,6 +163,33 @@ h3 {
   border-radius: 9px;
   background: #0e131e;
 }
+.tool-switch {
+  display: inline-flex;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0e131e;
+}
+.toolbar-select {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--faint);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.toolbar-select select {
+  width: auto;
+  min-height: 30px;
+  padding-inline: 5px;
+  font-size: 10px;
+}
+.toolbar-button.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .mode-button {
   min-height: 29px;
   padding: 0 10px;
@@ -644,6 +671,9 @@ input[type='number'] {
     min-width: 0;
     padding-inline: 6px;
     font-size: 10px;
+  }
+  .toolbar-select span {
+    display: none;
   }
 }
 @media (max-width: 820px) {

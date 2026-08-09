@@ -49,6 +49,14 @@ export function toRendererDimensions(dimensions: Dimensions): RendererVector3 {
   ]
 }
 
+export function toSceneDimensions(dimensions: RendererVector3): Dimensions {
+  return {
+    width: rendererLengthToMillimetres(dimensions[0]),
+    depth: rendererLengthToMillimetres(dimensions[2]),
+    height: rendererLengthToMillimetres(dimensions[1]),
+  }
+}
+
 export function toRendererTransform(transform: Transform): RendererTransform {
   return {
     position: toRendererVector(transform.position),

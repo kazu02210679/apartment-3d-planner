@@ -255,6 +255,7 @@ export function EntityInspector({ store }: { store: EditorStore }) {
           {(['x', 'y', 'z'] as const).map((axis) => (
             <NumericField
               key={axis}
+              testId={`position-${axis}`}
               label={`位置 ${axis.toUpperCase()}`}
               value={entity.transform.position[axis]}
               disabled={locked}
@@ -275,6 +276,7 @@ export function EntityInspector({ store }: { store: EditorStore }) {
           {(['x', 'y', 'z'] as const).map((axis) => (
             <NumericField
               key={axis}
+              testId={`rotation-${axis}`}
               label={`回転 ${axis.toUpperCase()}`}
               value={entity.transform.rotation[axis]}
               disabled={locked}
@@ -297,6 +299,7 @@ export function EntityInspector({ store }: { store: EditorStore }) {
           {(['width', 'depth', 'height'] as const).map((axis) => (
             <NumericField
               key={axis}
+              testId={`dimensions-${axis}`}
               label={
                 axis === 'width'
                   ? '幅（mm）'

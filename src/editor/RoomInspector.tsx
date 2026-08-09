@@ -14,12 +14,14 @@ export function NumericField({
   onCommit,
   disabled = false,
   min = -Infinity,
+  testId,
 }: {
   label: string
   value: number
   onCommit: (value: number) => void
   disabled?: boolean
   min?: number
+  testId?: string
 }) {
   const [draft, setDraft] = useState(String(value))
   const [error, setError] = useState('')
@@ -43,6 +45,7 @@ export function NumericField({
       <span>{label}</span>
       <input
         type="number"
+        data-testid={testId}
         inputMode="decimal"
         value={draft}
         disabled={disabled}

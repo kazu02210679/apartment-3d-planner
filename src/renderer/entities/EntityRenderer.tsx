@@ -1,6 +1,7 @@
 import { Edges } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { ReactNode } from 'react'
+import type { Group } from 'three'
 
 import { resolveCatalogInstance } from '../../catalog/catalog'
 import type { GeometryDescriptor } from '../../catalog/types'
@@ -146,6 +147,7 @@ interface EntityRendererProps {
   readonly selected: boolean
   readonly outOfBounds: boolean
   readonly onSelect: (id: string) => void
+  readonly onObjectReady?: (id: string, object: Group | null) => void
   readonly children?: ReactNode
 }
 
@@ -154,6 +156,7 @@ export function EntityRenderer({
   selected,
   outOfBounds,
   onSelect,
+  onObjectReady,
   children,
 }: EntityRendererProps) {
   const renderable = resolveRenderableEntity(entity, selected, outOfBounds)
@@ -168,6 +171,7 @@ export function EntityRenderer({
   return (
     <group
       name={entity.id}
+      ref={(object) => onObjectReady?.(entity.id, object)}
       position={renderable.transform.position}
       rotation={renderable.transform.rotation}
       onClick={select}

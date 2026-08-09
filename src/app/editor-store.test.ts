@@ -10,6 +10,18 @@ function ids() {
 }
 
 describe('EditorStore', () => {
+  it('exposes a transient interaction facade instead of persisting drag state', () => {
+    const idFactory = ids()
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+      idFactory,
+    })
+
+    expect(
+      typeof (store as unknown as { beginInteraction?: unknown }).beginInteraction,
+    ).toBe('function')
+  })
+
   it('provides defensive snapshots and exactly one notification per completed action', () => {
     const idFactory = ids()
     const store = createEditorStore({

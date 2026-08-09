@@ -28,6 +28,7 @@ import type {
 export type EditorMode = 'edit' | 'preview'
 export type LeftTab = 'catalog' | 'outliner'
 export type MobilePanel = 'none' | 'catalog' | 'outliner' | 'inspector'
+export type EditorTool = 'move' | 'rotate' | 'resize'
 
 export interface EditorSnapshot {
   readonly scene: SceneDocument
@@ -42,6 +43,10 @@ export interface EditorSnapshot {
   readonly saveStatus: ReturnType<AutosaveCoordinator['getStatus']>
   readonly activeLeftTab: LeftTab
   readonly mobilePanel: MobilePanel
+  readonly activeTool: EditorTool
+  readonly translationSnap: number
+  readonly rotationSnap: number
+  readonly floorSnap: boolean
   readonly errorMessage?: string
 }
 
@@ -78,6 +83,15 @@ export interface EditorActions {
   undo(): boolean
   redo(): boolean
   setMode(mode: EditorMode): void
+  setActiveTool(tool: EditorTool): void
+  setTranslationSnap(millimetres: number): void
+  setRotationSnap(degrees: number): void
+  setFloorSnap(enabled: boolean): void
+  beginInteraction(label: string, target?: unknown): boolean
+  updateInteractionTransform(entityId: string, transform: Transform): boolean
+  updateInteractionDimensions(entityId: string, dimensions: Dimensions): boolean
+  commitInteraction(): boolean
+  cancelInteraction(): boolean
   setLeftTab(tab: LeftTab): void
   setMobilePanel(panel: MobilePanel): void
   exportJson(): string
@@ -197,6 +211,10 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     saveStatus: autosave?.getStatus() ?? { state: 'idle' },
     activeLeftTab: 'catalog',
     mobilePanel: 'none',
+    activeTool: 'move',
+    translationSnap: 10,
+    rotationSnap: 15,
+    floorSnap: true,
   })
 
   const publish = (errorMessage?: string, saveStatus?: AutosaveStatus) => {
@@ -254,6 +272,64 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     afterExecute?.(commandStore.scene)
     publish()
     return changed
+  }
+
+  const interactionAction = (command: SceneCommand): boolean => {
+    try {
+      commandStore.updateInteraction(command)
+      publish()
+      return true
+    } catch (error) {
+      publish(
+        error instanceof Error ? error.message : 'Unable to update the interaction.',
+      )
+      return false
+    }
+  }
+
+  const catalogCustomDimensionsCommand = (
+    entity: Entity,
+    dimensions: Dimensions,
+  ): SceneCommand | undefined => {
+    if (!entity.catalog || !validDimensions(dimensions)) return undefined
+    const catalog = { ...entity.catalog }
+    delete catalog.presetId
+    const definition = CATALOG_DEFINITIONS.find(
+      (candidate) => candidate.id === entity.catalog?.itemId,
+    )
+    const existingGeometry =
+      entity.overrides.geometry &&
+      typeof entity.overrides.geometry === 'object' &&
+      !Array.isArray(entity.overrides.geometry)
+        ? (entity.overrides.geometry as JsonObject)
+        : {}
+    let overrides: JsonObject = {
+      ...clone(entity.overrides),
+      dimensions: clone(dimensions) as unknown as JsonObject,
+    }
+    if (
+      definition?.id === 'display.monitor' &&
+      definition.geometry.kind === 'panel-with-stand'
+    ) {
+      const standAllowance =
+        definition.defaultDimensions.height - definition.geometry.panel.height
+      const panelHeight = dimensions.height - standAllowance
+      if (panelHeight <= 0) return undefined
+      const existingPanel =
+        existingGeometry.panel &&
+        typeof existingGeometry.panel === 'object' &&
+        !Array.isArray(existingGeometry.panel)
+          ? (existingGeometry.panel as JsonObject)
+          : {}
+      overrides = {
+        ...overrides,
+        geometry: {
+          ...existingGeometry,
+          panel: { ...existingPanel, width: dimensions.width, height: panelHeight },
+        },
+      }
+    }
+    return { type: 'set-catalog', entityId: entity.id, catalog, overrides }
   }
 
   const replaceScene = (scene: SceneDocument, save = true): boolean => {
@@ -444,54 +520,9 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       const entity = commandStore.scene.entities.find(
         (candidate) => candidate.id === entityId,
       )
-      if (!entity?.catalog || !validDimensions(dimensions)) return false
-      const catalog = { ...entity.catalog }
-      delete catalog.presetId
-      const definition = CATALOG_DEFINITIONS.find(
-        (candidate) => candidate.id === entity.catalog?.itemId,
-      )
-      const existingGeometry =
-        entity.overrides.geometry &&
-        typeof entity.overrides.geometry === 'object' &&
-        !Array.isArray(entity.overrides.geometry)
-          ? (entity.overrides.geometry as JsonObject)
-          : {}
-      let overrides: JsonObject = {
-        ...clone(entity.overrides),
-        dimensions: clone(dimensions) as unknown as JsonObject,
-      }
-      if (
-        definition?.id === 'display.monitor' &&
-        definition.geometry.kind === 'panel-with-stand'
-      ) {
-        const standAllowance =
-          definition.defaultDimensions.height - definition.geometry.panel.height
-        const panelHeight = dimensions.height - standAllowance
-        if (panelHeight <= 0) return false
-        const existingPanel =
-          existingGeometry.panel &&
-          typeof existingGeometry.panel === 'object' &&
-          !Array.isArray(existingGeometry.panel)
-            ? (existingGeometry.panel as JsonObject)
-            : {}
-        overrides = {
-          ...overrides,
-          geometry: {
-            ...existingGeometry,
-            panel: {
-              ...existingPanel,
-              width: dimensions.width,
-              height: panelHeight,
-            },
-          },
-        }
-      }
-      return sceneAction({
-        type: 'set-catalog',
-        entityId,
-        catalog,
-        overrides,
-      })
+      if (!entity) return false
+      const command = catalogCustomDimensionsCommand(entity, dimensions)
+      return command ? sceneAction(command) : false
     },
     resetCatalogOverride(entityId, key) {
       const entity = commandStore.scene.entities.find(
@@ -632,6 +663,86 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       snapshot = { ...snapshot, mode, errorMessage: undefined }
       publish()
     },
+    setActiveTool(activeTool) {
+      snapshot = { ...snapshot, activeTool, errorMessage: undefined }
+      publish()
+    },
+    setTranslationSnap(translationSnap) {
+      if (!Number.isFinite(translationSnap) || translationSnap <= 0) return
+      snapshot = { ...snapshot, translationSnap, errorMessage: undefined }
+      publish()
+    },
+    setRotationSnap(rotationSnap) {
+      if (!Number.isFinite(rotationSnap) || rotationSnap <= 0) return
+      snapshot = { ...snapshot, rotationSnap, errorMessage: undefined }
+      publish()
+    },
+    setFloorSnap(floorSnap) {
+      snapshot = { ...snapshot, floorSnap, errorMessage: undefined }
+      publish()
+    },
+    beginInteraction(label, target) {
+      if (snapshot.mode !== 'edit' || commandStore.activeInteraction) return false
+      try {
+        commandStore.beginInteraction(label, target)
+        return true
+      } catch (error) {
+        publish(
+          error instanceof Error ? error.message : 'Unable to begin the interaction.',
+        )
+        return false
+      }
+    },
+    updateInteractionTransform(entityId, transform) {
+      return interactionAction({
+        type: 'set-transform',
+        entityId,
+        transform: clone(transform),
+      })
+    },
+    updateInteractionDimensions(entityId, dimensions) {
+      if (!validDimensions(dimensions)) return false
+      const entity = commandStore.scene.entities.find(
+        (candidate) => candidate.id === entityId,
+      )
+      if (!entity) return false
+      const command = entity.catalog
+        ? catalogCustomDimensionsCommand(entity, dimensions)
+        : { type: 'set-dimensions' as const, entityId, dimensions: clone(dimensions) }
+      return command ? interactionAction(command) : false
+    },
+    commitInteraction() {
+      try {
+        const changed = commandStore.commitInteraction()
+        if (changed) {
+          suppressAutosaveStatus = true
+          try {
+            autosave?.schedule(commandStore.scene)
+          } finally {
+            suppressAutosaveStatus = false
+          }
+        }
+        publish()
+        return changed
+      } catch (error) {
+        publish(
+          error instanceof Error ? error.message : 'Unable to commit the interaction.',
+        )
+        return false
+      }
+    },
+    cancelInteraction() {
+      try {
+        const cancelled = commandStore.cancelInteraction()
+        publish()
+        return cancelled
+      } catch (error) {
+        publish(
+          error instanceof Error ? error.message : 'Unable to cancel the interaction.',
+        )
+        return false
+      }
+    },
     setLeftTab(activeLeftTab) {
       snapshot = { ...snapshot, activeLeftTab, errorMessage: undefined }
       publish()
@@ -769,6 +880,33 @@ export class EditorStoreClass implements EditorStore {
   }
   setMode(mode: EditorMode) {
     return this.delegate.setMode(mode)
+  }
+  setActiveTool(tool: EditorTool) {
+    return this.delegate.setActiveTool(tool)
+  }
+  setTranslationSnap(millimetres: number) {
+    return this.delegate.setTranslationSnap(millimetres)
+  }
+  setRotationSnap(degrees: number) {
+    return this.delegate.setRotationSnap(degrees)
+  }
+  setFloorSnap(enabled: boolean) {
+    return this.delegate.setFloorSnap(enabled)
+  }
+  beginInteraction(label: string, target?: unknown) {
+    return this.delegate.beginInteraction(label, target)
+  }
+  updateInteractionTransform(entityId: string, transform: Transform) {
+    return this.delegate.updateInteractionTransform(entityId, transform)
+  }
+  updateInteractionDimensions(entityId: string, dimensions: Dimensions) {
+    return this.delegate.updateInteractionDimensions(entityId, dimensions)
+  }
+  commitInteraction() {
+    return this.delegate.commitInteraction()
+  }
+  cancelInteraction() {
+    return this.delegate.cancelInteraction()
   }
   setLeftTab(tab: LeftTab) {
     return this.delegate.setLeftTab(tab)

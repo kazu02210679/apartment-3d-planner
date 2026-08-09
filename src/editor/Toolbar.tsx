@@ -60,6 +60,61 @@ export function Toolbar({ store }: { store: EditorStore }) {
             プレビュー
           </button>
         </div>
+        <div className="tool-switch" role="group" aria-label="Direct manipulation tool">
+          {(
+            [
+              ['move', 'Move'],
+              ['rotate', 'Rotate'],
+              ['resize', 'Resize'],
+            ] as const
+          ).map(([tool, label]) => (
+            <button
+              key={tool}
+              className={`mode-button ${snapshot.activeTool === tool ? 'is-active' : ''}`}
+              type="button"
+              aria-label={label}
+              aria-pressed={snapshot.activeTool === tool}
+              disabled={snapshot.mode !== 'edit'}
+              onClick={() => store.setActiveTool(tool)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <label className="toolbar-select">
+          <span>Move snap</span>
+          <select
+            aria-label="Move snap"
+            value={snapshot.translationSnap}
+            onChange={(event) => store.setTranslationSnap(Number(event.target.value))}
+          >
+            <option value={1}>1 mm</option>
+            <option value={10}>10 mm</option>
+            <option value={50}>50 mm</option>
+            <option value={100}>100 mm</option>
+          </select>
+        </label>
+        <label className="toolbar-select">
+          <span>Rotate snap</span>
+          <select
+            aria-label="Rotate snap"
+            value={snapshot.rotationSnap}
+            onChange={(event) => store.setRotationSnap(Number(event.target.value))}
+          >
+            <option value={5}>5°</option>
+            <option value={15}>15°</option>
+            <option value={45}>45°</option>
+            <option value={90}>90°</option>
+          </select>
+        </label>
+        <button
+          className={`toolbar-button toolbar-text ${snapshot.floorSnap ? 'is-active' : ''}`}
+          type="button"
+          aria-pressed={snapshot.floorSnap}
+          onClick={() => store.setFloorSnap(!snapshot.floorSnap)}
+        >
+          Floor snap
+        </button>
         <button
           className="toolbar-button"
           type="button"

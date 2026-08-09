@@ -5,6 +5,8 @@ import type { EditorStore } from '../app/editor-store'
 import { FallbackPanel } from './FallbackPanel'
 import { isWebGLAvailable } from './quality'
 import { SceneRoot, type CameraIntent } from './SceneRoot'
+import { createInteractionController } from './controls/interaction-controller'
+import { toRendererTransform } from './adapters'
 
 function useSnapshot(store: EditorStore) {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
@@ -41,10 +43,34 @@ export function SceneCanvas({
     setCameraIntent('idle')
     queueMicrotask(() => setCameraIntent(intent))
   }
+  const nudgeSelected = () => {
+    const id = snapshot.selectedEntityId
+    const entity = id
+      ? snapshot.scene.entities.find((candidate) => candidate.id === id)
+      : undefined
+    if (!id || !entity || snapshot.mode !== 'edit') return
+    const controller = createInteractionController(store)
+    if (!controller.start(id, 'move')) return
+    const transform = toRendererTransform(entity.transform)
+    controller.updateTransform([
+      transform.position[0] + 0.01,
+      transform.position[1],
+      transform.position[2],
+    ])
+    controller.commit()
+  }
 
   return (
     <div className="scene-canvas" data-testid="scene-canvas">
       <nav className="scene-camera-controls" aria-label="Camera controls">
+        <button
+          type="button"
+          aria-label="Nudge selected right"
+          disabled={!available || snapshot.mode !== 'edit' || !snapshot.selectedEntityId}
+          onClick={nudgeSelected}
+        >
+          Nudge +X
+        </button>
         <button
           type="button"
           aria-label="Zoom in"
@@ -94,6 +120,9 @@ export function SceneCanvas({
               selectedEntityIds={snapshot.selectedEntityIds}
               outOfBoundsEntityIds={snapshot.outOfBoundsEntityIds}
               cameraIntent={cameraIntent}
+              store={store}
+              mode={snapshot.mode}
+              activeTool={snapshot.activeTool}
               onEntitySelect={(id) => store.selectEntity(id)}
               onEmptyHit={() => store.clearSelection()}
             />
