@@ -13,66 +13,21 @@ function useSnapshot(store: EditorStore) {
 
 function SceneStage({ store }: { store: EditorStore }) {
   const snapshot = useSnapshot(store)
+
   return (
     <section className="viewport" aria-label="3Dビューポート">
-      <div className="viewport-toolbar">
-        <div className="toolbar-context">
-          <span className="status-dot" aria-hidden="true" />
-          <span>{snapshot.mode === 'edit' ? '編集モード' : 'プレビューモード'}</span>
-        </div>
-        <div className="toolbar-tools" aria-label="ビューポート操作">
-          <button type="button" aria-label="ズームアウト">
-            −
-          </button>
-          <span>100%</span>
-          <button type="button" aria-label="ズームイン">
-            ＋
-          </button>
-          <button type="button" aria-label="ビューをリセット">
-            ⟳
-          </button>
-        </div>
+      <div className="toolbar-context">
+        <span className="status-dot" aria-hidden="true" />
+        <span>{snapshot.mode === 'edit' ? '編集モード' : 'プレビューモード'}</span>
       </div>
       <div className="canvas-frame" data-testid="scene-stage">
         <SceneCanvas store={store} />
-        <div className="canvas-grid" aria-hidden="true" />
-        <div className="stage-room" aria-hidden="true">
-          <span className="stage-wall stage-wall--back" />
-          <span className="stage-wall stage-wall--side" />
-          <span className="stage-floor" />
-        </div>
-        <div className="stage-entities" aria-label="シーン内エンティティ">
-          {snapshot.scene.entities.slice(0, 80).map((entity, index) => (
-            <button
-              key={entity.id}
-              className={`stage-entity ${snapshot.selectedEntityId === entity.id ? 'is-selected' : ''} ${snapshot.outOfBoundsEntityIds.includes(entity.id) ? 'is-out-of-bounds' : ''}`}
-              type="button"
-              aria-label={`${entity.name}をステージで選択`}
-              onClick={() => store.selectEntity(entity.id)}
-              style={{ '--entity-index': index } as React.CSSProperties}
-            >
-              <span>{entity.name}</span>
-            </button>
-          ))}
-        </div>
-        <div className="viewport-center">
-          <span className="viewport-badge">
-            {snapshot.mode === 'edit' ? 'EDITING' : 'PREVIEW'}
-          </span>
-          <h2>{snapshot.scene.room.name}</h2>
-          <p>シーンデータを表示中 · Task 7でWebGLレンダラーに接続します</p>
-        </div>
-        <div className="canvas-corner canvas-corner--top">TOP / MM</div>
-        <div className="canvas-corner canvas-corner--bottom">
-          {(snapshot.scene.room.width / 1000).toFixed(1)} ×{' '}
-          {(snapshot.scene.room.depth / 1000).toFixed(1)} m
-        </div>
       </div>
       <div className="viewport-footer">
-        <span>{snapshot.scene.entities.length} エンティティ · ID選択同期</span>
+        <span>{snapshot.scene.entities.length} エンティティ</span>
         <span>
           {snapshot.outOfBoundsEntityIds.length > 0
-            ? `${snapshot.outOfBoundsEntityIds.length}件が範囲外`
+            ? `${snapshot.outOfBoundsEntityIds.length} 件が部屋の外です`
             : '範囲内'}
         </span>
       </div>
@@ -89,6 +44,7 @@ export function EditorShell({ store }: { store: EditorStore }) {
     ) : (
       <Outliner store={store} />
     )
+
   return (
     <main className="app-shell">
       <Toolbar store={store} />

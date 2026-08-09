@@ -15,6 +15,22 @@ function createStore() {
 }
 
 describe('EditorShell', () => {
+  it('uses only the real canvas surface instead of legacy stage controls and entities', () => {
+    const store = createEditorStore()
+    const { container } = render(<EditorShell store={store} />)
+
+    expect(screen.getByTestId('scene-canvas')).toBeInTheDocument()
+    expect(container.querySelector('.canvas-grid')).not.toBeInTheDocument()
+    expect(container.querySelector('.stage-room')).not.toBeInTheDocument()
+    expect(container.querySelector('.stage-entities')).not.toBeInTheDocument()
+    expect(container.querySelector('.stage-entity')).not.toBeInTheDocument()
+    expect(container.querySelector('.viewport-center')).not.toBeInTheDocument()
+    expect(container.querySelector('.canvas-corner')).not.toBeInTheDocument()
+    expect(container.querySelector('.toolbar-tools')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Zoom in' })).toHaveLength(1)
+    expect(screen.queryByText(/Task 7/)).not.toBeInTheDocument()
+  })
+
   it('selects a catalog item by stable id and edits it in the inspector', () => {
     const store = createStore()
     render(<EditorShell store={store} />)
