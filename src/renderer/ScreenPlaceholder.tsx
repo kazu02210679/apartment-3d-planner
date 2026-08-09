@@ -29,13 +29,13 @@ export function ScreenPlaceholder({
         <meshBasicMaterial color="#111a29" />
       </mesh>
       {[-0.3, 0, 0.3].map((offset, index) => (
-        <mesh key={offset} position={[offset * width, height * 0.18, 0.002]}>
+        <mesh key={offset} position={[offset * width, height * 0.18, 0.001]}>
           <planeGeometry args={[width * 0.22, tileHeight]} />
           <meshBasicMaterial color={index === 1 ? accent : '#25344b'} />
         </mesh>
       ))}
       {[-0.18, -0.32].map((offset) => (
-        <mesh key={offset} position={[-width * 0.12, offset * height, 0.002]}>
+        <mesh key={offset} position={[-width * 0.12, offset * height, 0.001]}>
           <planeGeometry args={[width * 0.55, height * 0.045]} />
           <meshBasicMaterial color="#657895" />
         </mesh>

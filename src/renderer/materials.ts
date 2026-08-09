@@ -13,6 +13,16 @@ const MATERIALS: Readonly<Record<string, RendererMaterial>> = {
 
 export const DEFAULT_RENDERER_MATERIAL: RendererMaterial = MATERIALS.standard
 
-export function resolveRendererMaterial(materialId?: string): RendererMaterial {
-  return (materialId && MATERIALS[materialId]) || DEFAULT_RENDERER_MATERIAL
+export function resolveRendererMaterial(
+  materialId?: string,
+  preview = false,
+): RendererMaterial {
+  const material = (materialId && MATERIALS[materialId]) || DEFAULT_RENDERER_MATERIAL
+  return preview
+    ? {
+        ...material,
+        roughness: Math.max(0.36, material.roughness - 0.18),
+        metalness: Math.min(0.4, material.metalness + 0.08),
+      }
+    : material
 }

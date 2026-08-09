@@ -22,6 +22,22 @@ test('preview is transient, keeps the selected workstation entity, and removes d
   )
 
   await page.getByTestId('catalog-add-desk.l-shaped-sit-stand').click()
+  await page.locator('.tool-switch .mode-button').nth(2).click()
+  const width = page.getByTestId('dimensions-width')
+  const widthBeforeResize = await width.inputValue()
+  const canvasBox = await page.locator('canvas').boundingBox()
+  if (!canvasBox) throw new Error('The detailed desk canvas did not have a bounding box.')
+  await page.mouse.move(
+    canvasBox.x + canvasBox.width * 0.64,
+    canvasBox.y + canvasBox.height * 0.53,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    canvasBox.x + canvasBox.width * 0.69,
+    canvasBox.y + canvasBox.height * 0.53,
+  )
+  await page.mouse.up()
+  await expect(width).not.toHaveValue(widthBeforeResize)
   const selectedId = await page.locator('.inspector-title .muted-copy').textContent()
   if (!selectedId)
     throw new Error('The selected desk did not expose its stable entity ID.')

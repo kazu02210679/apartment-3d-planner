@@ -131,6 +131,7 @@ export function SceneRoot({
       outOfBounds={outOfBoundsEntityIds.includes(entity.id)}
       onSelect={onEntitySelect}
       onObjectReady={registerObject}
+      profile={profile}
     >
       {mode === 'edit' &&
       entity.id === selectedId &&

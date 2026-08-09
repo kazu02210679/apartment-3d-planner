@@ -11,6 +11,7 @@ import {
   type RendererTransform,
 } from '../adapters'
 import { resolveRendererMaterial, type RendererMaterial } from '../materials'
+import type { RendererProfile } from '../quality'
 import { Computer } from './Computer'
 import { GenericBox } from './GenericBox'
 import { LDesk } from './LDesk'
@@ -40,6 +41,7 @@ export function resolveRenderableEntity(
   entity: Entity,
   selected: boolean,
   outOfBounds: boolean,
+  preview = false,
 ): RenderableEntity | null {
   if (!entity.visible) return null
 
@@ -49,7 +51,7 @@ export function resolveRenderableEntity(
       entity,
       dimensions: resolved?.dimensions ?? entity.dimensions,
       geometry: resolved?.geometry ?? { kind: 'box' },
-      material: resolveRendererMaterial(resolved?.materialId),
+      material: resolveRendererMaterial(resolved?.materialId, preview),
       transform: toRendererTransform(entity.transform),
       state: { selected, locked: entity.locked, outOfBounds },
     }
@@ -58,7 +60,7 @@ export function resolveRenderableEntity(
       entity,
       dimensions: entity.dimensions,
       geometry: { kind: 'box' },
-      material: resolveRendererMaterial(),
+      material: resolveRendererMaterial(undefined, preview),
       transform: toRendererTransform(entity.transform),
       state: { selected, locked: entity.locked, outOfBounds },
     }
@@ -134,6 +136,7 @@ interface EntityRendererProps {
   readonly onSelect: (id: string) => void
   readonly onObjectReady?: (id: string, object: Group | null) => void
   readonly children?: ReactNode
+  readonly profile?: RendererProfile
 }
 
 export function EntityRenderer({
@@ -143,8 +146,14 @@ export function EntityRenderer({
   onSelect,
   onObjectReady,
   children,
+  profile,
 }: EntityRendererProps) {
-  const renderable = resolveRenderableEntity(entity, selected, outOfBounds)
+  const renderable = resolveRenderableEntity(
+    entity,
+    selected,
+    outOfBounds,
+    profile?.id === 'preview',
+  )
   if (!renderable) return null
   const select = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation()

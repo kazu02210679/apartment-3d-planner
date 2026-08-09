@@ -59,3 +59,13 @@
   drift, per-entity lights, and Task 8 control placement. None were introduced.
 - Preserved the existing untracked `.playwright-cli/` and `output/` controller
   artifacts; neither is staged or modified by this task.
+
+## Correction round 1
+
+- Corrected desk layout to consume the resolved L-desk main/return top geometry
+  and return side, while straight desks omit the return.
+- Added primitive-bound fitting and rendered `Box3` checks across 12 detailed
+  model variants; all measured bounds remain within their local envelope.
+- Preview now applies real ACES filmic tone mapping/exposure and transiently
+  adjusts material roughness/metalness without altering serialized scene JSON.
+- Preview E2E now performs a real Task 8 desk resize before the mode switch.

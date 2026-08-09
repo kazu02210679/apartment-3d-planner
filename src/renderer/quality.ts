@@ -7,6 +7,7 @@ export interface RendererProfile {
   readonly showGrid: boolean
   readonly background: string
   readonly shadowMapSize: number
+  readonly exposure: number
 }
 
 const PROFILES: Readonly<Record<RendererMode, RendererProfile>> = {
@@ -17,6 +18,7 @@ const PROFILES: Readonly<Record<RendererMode, RendererProfile>> = {
     showGrid: true,
     background: '#0d121d',
     shadowMapSize: 1024,
+    exposure: 1,
   },
   preview: {
     id: 'preview',
@@ -25,6 +27,7 @@ const PROFILES: Readonly<Record<RendererMode, RendererProfile>> = {
     showGrid: false,
     background: '#111923',
     shadowMapSize: 1536,
+    exposure: 1.15,
   },
 }
 
