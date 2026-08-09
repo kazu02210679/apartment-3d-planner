@@ -466,6 +466,59 @@ input[type='number'] {
     #0d121d;
   isolation: isolate;
 }
+.scene-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+.scene-canvas__webgl {
+  width: 100% !important;
+  height: 100% !important;
+}
+.scene-camera-controls {
+  position: absolute;
+  z-index: 3;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  gap: 6px;
+}
+.scene-camera-controls button {
+  min-width: 32px;
+  min-height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: rgba(19, 24, 36, 0.9);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 10px;
+}
+.renderer-fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  align-content: center;
+  justify-items: center;
+  padding: 30px;
+  background: rgba(13, 18, 29, 0.96);
+  color: var(--muted);
+  text-align: center;
+}
+.renderer-fallback strong {
+  color: var(--ink);
+}
+.renderer-fallback p {
+  margin: 6px 0 0;
+  font-size: 11px;
+}
+.canvas-grid,
+.stage-room,
+.stage-entities,
+.viewport-center,
+.canvas-corner {
+  display: none;
+}
 .canvas-grid {
   position: absolute;
   inset: -40%;

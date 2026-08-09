@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
 import type { EditorStore } from '../app/editor-store'
+import { SceneCanvas } from '../renderer/SceneCanvas'
 import { CatalogPanel } from './CatalogPanel'
 import { Inspector } from './Inspector'
 import { Outliner } from './Outliner'
@@ -33,6 +34,7 @@ function SceneStage({ store }: { store: EditorStore }) {
         </div>
       </div>
       <div className="canvas-frame" data-testid="scene-stage">
+        <SceneCanvas store={store} />
         <div className="canvas-grid" aria-hidden="true" />
         <div className="stage-room" aria-hidden="true">
           <span className="stage-wall stage-wall--back" />
