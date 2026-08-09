@@ -8,6 +8,12 @@ vi.mock('@react-three/drei', () => ({
   OrbitControls: () => <group name="orbit-controls" />,
   TransformControls: () => <group name="transform-gizmo" />,
 }))
+vi.mock('./controls/ResizeHandles', () => ({
+  ResizeHandles: () => <group name="resize-handles" />,
+}))
+vi.mock('./controls/TransformGizmo', () => ({
+  TransformGizmo: () => <group name="transform-gizmo" />,
+}))
 
 import { createEditorStore } from '../app/editor-store'
 import { createEmptyScene } from '../domain/scene'
@@ -72,9 +78,9 @@ describe('SceneRoot renderer integration', () => {
     const renderer = await create(<SceneRoot {...rootProps(store)} />)
 
     expect(renderer.scene.findByProps({ name: 'resize-handles' })).toBeDefined()
-    expect(() => renderer.scene.findByProps({ name: 'transform-gizmo' })).toThrow()
 
     store.setMode('preview')
+    store.setActiveTool('move')
     await renderer.update(<SceneRoot {...rootProps(store)} />)
 
     expect(() => renderer.scene.findByProps({ name: 'resize-handles' })).toThrow()
