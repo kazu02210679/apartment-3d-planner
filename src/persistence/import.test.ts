@@ -206,6 +206,88 @@ describe('bounded scene import and migration', () => {
       { entityId: cable.id, portId: 'cable-non-end' },
     ]
     expectImportFailure(JSON.stringify(cableTarget), 'invariant-invalid')
+
+    const cableToCable = structuredClone(base)
+    const otherCable = structuredClone(cable)
+    otherCable.id = 'other-cable'
+    otherCable.ports = otherCable.ports.map((port) => ({
+      ...port,
+      id: `other-${port.id}`,
+    }))
+    cableToCable.entities.push(otherCable)
+    const otherEnd = otherCable.ports.find(
+      (port) => port.extensions.catalogPortId === 'end-a',
+    )!
+    cableToCable.connections.find(
+      (connection) => connection.id === firstAttachment.id,
+    )!.endpoints = [
+      { entityId: cable.id, portId: endA.id },
+      { entityId: otherCable.id, portId: otherEnd.id },
+    ]
+    expectImportFailure(JSON.stringify(cableToCable), 'invariant-invalid')
+  })
+
+  it('imports a four-end legacy cable net without rewriting its stable JSON', () => {
+    const legacy = createFutureWorkstationScene({
+      idFactory: (() => {
+        let index = 0
+        return () => `legacy-cable-${++index}`
+      })(),
+      now: () => '2026-08-06T00:00:00.000Z',
+    })
+    const cable = legacy.entities.find((entity) => entity.name === 'Power cable')!
+    const powerStrip = legacy.entities.find(
+      (entity) => entity.name === 'Power strip one',
+    )!
+    const windows = legacy.entities.find(
+      (entity) => entity.name === 'Windows workstation',
+    )!
+    const endA = cable.ports.find((port) => port.extensions.catalogPortId === 'end-a')!
+    const endB = cable.ports.find((port) => port.extensions.catalogPortId === 'end-b')!
+    const outlet = powerStrip.ports.find(
+      (port) => port.extensions.catalogPortId === 'outlet',
+    )!
+    const powerIn = windows.ports.find(
+      (port) => port.extensions.catalogPortId === 'power-in',
+    )!
+    legacy.connections = legacy.connections.filter(
+      (connection) =>
+        !connection.endpoints.some(
+          (endpoint) =>
+            endpoint.entityId === cable.id &&
+            (endpoint.portId === endA.id || endpoint.portId === endB.id),
+        ),
+    )
+    legacy.connections.push({
+      id: 'legacy-four-end-net',
+      kind: 'power',
+      endpoints: [
+        { entityId: cable.id, portId: endA.id },
+        { entityId: powerStrip.id, portId: outlet.id },
+        { entityId: cable.id, portId: endB.id },
+        { entityId: windows.id, portId: powerIn.id },
+      ],
+      properties: {},
+      extensions: {},
+    })
+
+    const imported = importScene(JSON.stringify(legacy))
+    expect(imported.ok).toBe(true)
+    if (!imported.ok) return
+    expect(
+      imported.scene.connections.find(
+        (connection) => connection.id === 'legacy-four-end-net',
+      )?.endpoints,
+    ).toEqual([
+      { entityId: cable.id, portId: endA.id },
+      { entityId: powerStrip.id, portId: outlet.id },
+      { entityId: cable.id, portId: endB.id },
+      { entityId: windows.id, portId: powerIn.id },
+    ])
+    const exported = exportScene(imported.scene)
+    const reimported = importScene(exported)
+    expect(reimported.ok).toBe(true)
+    if (reimported.ok) expect(exportScene(reimported.scene)).toBe(exported)
   })
 
   it('accepts exact resource boundaries and rejects one-above with limit errors', () => {

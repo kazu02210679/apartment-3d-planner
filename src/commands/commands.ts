@@ -110,7 +110,7 @@ function catalogEntity(
     extensions: {},
   }
   const resolved = resolveCatalogInstance(candidate)
-  return { ...candidate, dimensions: resolved.dimensions }
+  return reconcileCablePortPositions(candidate, resolved.dimensions)
 }
 function addConnection(scene: SceneDocument, connection: Connection): void {
   if (scene.connections.some((candidate) => candidate.id === connection.id))

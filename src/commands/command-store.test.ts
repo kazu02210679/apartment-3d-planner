@@ -118,6 +118,30 @@ describe('CommandStore', () => {
     }
   })
 
+  it('reconciles cable-end anchors when a custom cable is first created', () => {
+    const store = createCommandStore(scene(), { idFactory: ids() })
+    store.execute({
+      type: 'add-catalog-entity',
+      itemId: 'cable.generic',
+      id: 'custom-cable',
+      overrides: { dimensions: { width: 100, depth: 10, height: 10 } },
+    })
+
+    const cable = store.scene.entities.find((entity) => entity.id === 'custom-cable')!
+    expect(cable.dimensions).toEqual({ width: 100, depth: 10, height: 10 })
+    for (const port of cable.ports) {
+      expect(Math.abs(port.position?.x ?? 0)).toBeLessThanOrEqual(
+        cable.dimensions.width / 2,
+      )
+      expect(Math.abs(port.position?.y ?? 0)).toBeLessThanOrEqual(
+        cable.dimensions.height / 2,
+      )
+      expect(Math.abs(port.position?.z ?? 0)).toBeLessThanOrEqual(
+        cable.dimensions.depth / 2,
+      )
+    }
+  })
+
   it('rejects catalog transitions into or out of cable.generic', () => {
     const initial = scene()
     const cable = entity('cable')

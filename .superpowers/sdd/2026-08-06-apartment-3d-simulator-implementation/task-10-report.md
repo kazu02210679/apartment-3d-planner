@@ -36,10 +36,10 @@
   start. Pointer up commits one history/autosave entry; pointer cancel, Escape,
   cable-mode removal, and root unmount cancel it, restore the original waypoint,
   release pointer capture, and re-enable orbit.
-- Invariants/import now reject every connection involving a cable endpoint that
-  targets a cable entity, including `end-a` to `end-b` self-links and a cable end
-  to a non-end cable port. Legacy multi-target nets with one cable end and only
-  non-cable targets remain accepted as read-only data.
+- Invariants/import now reject pairwise connections involving a cable endpoint
+  that targets a cable entity, including `end-a` to `end-b` self-links and a
+  cable end to a non-end cable port. Legacy multi-target nets with non-cable
+  targets remain accepted as read-only data.
 - On direct or catalog-resolved cable resizing, the stored local `end-a`/`end-b`
   anchor coordinates are clamped independently to the new resolved half-extents.
   Existing free-end edits therefore remain unchanged whenever already in bounds;
@@ -49,6 +49,21 @@
   import rejection, store rejection, canonical/legacy inspector controls,
   direct/catalog-resolved 100 mm bounds, and R3F success/cancel/Escape/mode
   switch/unmount pointer lifecycles.
+
+## Correction round 2
+
+- Pairwise cable-to-cable and self-attachment rejection is now intentionally
+  limited to two-endpoint attachment shapes. A valid legacy four-end v1 net in
+  stored order (`cable end-a`, device, `cable end-b`, device) imports without
+  rewriting, stays legacy/read-only, occupies both cable ends, and exports to a
+  stable canonical JSON digest.
+- Catalog construction now applies the same resolved-dimension end-anchor
+  reconciliation as later resize and set-catalog commands. A cable created with
+  custom dimensions therefore cannot begin with anchors outside its envelope.
+- RED/GREEN evidence: the legacy import and 100 mm initial-custom-cable tests
+  failed before the production change, then the focused import/invariant/command
+  suite passed 37 tests. The import regression also keeps pairwise same-cable and
+  cross-cable links rejected.
 
 ## Residual risks
 

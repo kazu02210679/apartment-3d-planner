@@ -105,9 +105,9 @@ export function collectSceneInvariantIssues(scene: SceneDocument): SceneInvarian
       isCableEnd(scene, endpoint),
     )
     if (
+      connection.endpoints.length === 2 &&
       cableEntityEndpoints.length > 0 &&
-      (cableEntityEndpoints.length !== cableEndpoints.length ||
-        cableEntityEndpoints.length > 1)
+      (cableEntityEndpoints.length !== 1 || cableEndpoints.length !== 1)
     ) {
       issues.push({
         code: 'invalid-cable-attachment',
