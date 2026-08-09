@@ -53,6 +53,22 @@ const cases = [
       />
     ),
   ],
+  [
+    'oversized custom L desk',
+    [1.8, 0.72, 1.2] as RendererVector3,
+    (d: RendererVector3) => (
+      <LDesk
+        dimensions={d}
+        material={DEFAULT_RENDERER_MATERIAL}
+        geometry={{
+          kind: 'l-desk',
+          mainTop: { width: 2000, depth: 600 },
+          returnTop: { width: 1200, depth: 800 },
+          returnSide: 'right',
+        }}
+      />
+    ),
+  ],
   ...(['monitor-24', 'monitor-27', 'monitor-32'] as const).map(
     (preset) =>
       [
