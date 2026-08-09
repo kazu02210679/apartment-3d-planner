@@ -1,9 +1,19 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createEmptyScene } from '../domain/scene'
 import { createEditorStore } from '../app/editor-store'
 import { EditorShell } from './EditorShell'
+
+vi.mock('../renderer/SceneCanvas', () => ({
+  SceneCanvas: () => (
+    <div data-testid="scene-canvas">
+      <button type="button" aria-label="Zoom in">
+        +
+      </button>
+    </div>
+  ),
+}))
 
 function createStore() {
   let index = 0
