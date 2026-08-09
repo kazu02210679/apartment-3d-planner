@@ -701,14 +701,18 @@ input[type='number'] {
     color: var(--muted);
   }
   .mobile-sheet > .catalog-panel,
-  .mobile-sheet > .outliner-panel,
-  .mobile-sheet > .inspector {
+  .mobile-sheet > .outliner-panel {
     min-height: 0;
     overflow: auto;
     padding: 14px;
   }
-  .mobile-sheet > .inspector {
+  .mobile-sheet--inspector > .panel--right {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
     border: 0;
+    padding: 14px;
   }
 }
 @media (max-width: 620px) {

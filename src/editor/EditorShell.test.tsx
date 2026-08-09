@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { createEmptyScene } from '../domain/scene'
@@ -108,6 +108,20 @@ describe('EditorShell', () => {
         ?.transform.position.x,
     ).toBe(0)
     expect(store.getSnapshot().selectedEntityId).toBe(entityId)
+  })
+
+  it('marks the inspector mobile sheet so its inspector panel remains visible', () => {
+    const store = createStore()
+    render(<EditorShell store={store} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'プロパティ' }))
+
+    const sheet = screen.getByTestId('mobile-sheet')
+    expect(sheet).toHaveClass('mobile-sheet--inspector')
+    expect(
+      within(sheet).getByRole('complementary', { name: 'プロパティパネル' }),
+    ).toBeInTheDocument()
+    expect(within(sheet).getByRole('heading', { name: '部屋' })).toBeInTheDocument()
   })
 
   it('supports additive outliner selection, grouping, mobile sheets, and import errors through DOM semantics', async () => {

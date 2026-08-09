@@ -104,7 +104,7 @@ export function EditorShell({ store }: { store: EditorStore }) {
       </div>
       {panel !== 'none' ? (
         <div
-          className="mobile-sheet"
+          className={`mobile-sheet${panel === 'inspector' ? ' mobile-sheet--inspector' : ''}`}
           data-testid="mobile-sheet"
           role="dialog"
           aria-label={`${panel === 'inspector' ? 'プロパティ' : panel === 'catalog' ? 'カタログ' : 'アウトライナー'}シート`}
