@@ -22,10 +22,12 @@ attachments/cache artifacts and are not tracked.
   scrolling. Editor and preview screenshots are attached for all three sizes.
 - Keyboard/accessibility: `e2e/accessibility.spec.ts` has zero serious/critical
   Axe findings in initial editor, mobile sheet, cable mode, and preview. It uses
-  keyboard activation through mode, catalog add, outliner selection, numeric
-  Enter, undo, export/import, a real detached cable-end draft, and mobile sheet
-  open/close with exact focus restore. Escape cancels the draft with unchanged
-  export and undo state.
+  bounded real Tab/Shift+Tab traversal through mode, catalog add, outliner
+  selection, numeric Ctrl+A/type/Enter, undo, export/import, a real detached
+  cable-end draft, and mobile sheet open/close with exact focus restore. Native
+  cable selection uses Home/ArrowDown/Enter rather than programmatic selection;
+  every reached visible target asserts its focus indicator. Escape cancels the
+  draft with unchanged export and undo state.
 - Offline: `e2e/offline.spec.ts` installs request/websocket guards before
   navigation, then completes add/edit/autosave/download/file-input import/preview/
   reload with zero external requests, websockets, page errors, or console errors.
@@ -33,8 +35,8 @@ attachments/cache artifacts and are not tracked.
   entry dynamically imports the exact `src/renderer/SceneCanvas.tsx` key, delays
   that exact chunk to prove loading fallback then canvas, and measures a real
   selected entity ID/numeric Enter/accessible Undo lifecycle inside the page.
-  One warm-up plus final raw samples were 65.0, 65.8, and 35.5 ms; median
-  65.0 ms (<250 ms). It then verifies preview export target x=103, undo/redo
+  One warm-up plus final raw samples were 66.4, 65.9, and 68.9 ms; median
+  66.4 ms (<250 ms). It then verifies preview export target x=103, undo/redo
   canonical equality, editor renderer restoration, and no browser errors.
 
 ## Material correction fixes
@@ -47,6 +49,9 @@ attachments/cache artifacts and are not tracked.
   on low global opacity.
 - Strengthened all acceptance tests to use stable visible Japanese labels and the
   actual download/file-input path, rather than toolbar positional selectors.
+- Replaced programmatic focus jumps in the keyboard acceptance workflow with
+  bounded real Tab/Shift+Tab traversal and native-select key navigation, so the
+  test now proves logical focus order instead of only exercising controls.
 
 ## Bundle metrics
 
@@ -59,14 +64,14 @@ attachments/cache artifacts and are not tracked.
 ## Validation
 
 - Focused: `npm.cmd test -- src/editor/CableTool.test.tsx` passed.
-- Focused browser: accessibility 1/1, responsive 3/3, offline 1/1, persistence
-  1/1, and strict performance 1/1 passed.
+- Focused browser: accessibility 1/1 (keyboard traversal correction), responsive
+  3/3, offline 1/1, persistence 1/1, and strict performance 1/1 passed.
 - `npm.cmd test`: 177 tests passed. Existing R3F unit-test stderr continues to
   report pre-existing Three duplicate-instance/Clock and `act(...)` test-harness
   warnings; browser tests have zero page/console errors.
 - `npm.cmd run typecheck`, `lint`, `format:check`, `build`, and
   `git diff --check`: passed.
-- `npm.cmd run test:e2e`: 14/14 passed serially in 38.9 seconds. Serial execution
+- `npm.cmd run test:e2e`: 14/14 passed serially in 53.4 seconds. Serial execution
   intentionally keeps the fixed single-Chromium performance baseline free of
   competing renderer processes.
 

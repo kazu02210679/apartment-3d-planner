@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 async function expectNoSeriousOrCritical(page: Page) {
   const results = await new AxeBuilder({ page }).analyze()
@@ -10,9 +10,44 @@ async function expectNoSeriousOrCritical(page: Page) {
   ).toEqual([])
 }
 
-async function downloadText(page: Page): Promise<string> {
+async function expectVisibleFocus(target: Locator): Promise<void> {
+  await expect(target).toBeFocused()
+  const style = await target.evaluate((element) => {
+    const computed = getComputedStyle(element)
+    return { outlineStyle: computed.outlineStyle, outlineWidth: computed.outlineWidth }
+  })
+  expect(style.outlineStyle).not.toBe('none')
+  expect(style.outlineWidth).not.toBe('0px')
+}
+
+async function tabUntilActive(
+  page: Page,
+  target: Locator,
+  direction: 'forward' | 'backward' = 'forward',
+): Promise<number> {
+  await expect(target).toBeVisible()
+  for (let steps = 0; steps <= 180; steps += 1) {
+    try {
+      await expect(target).toBeFocused({ timeout: 20 })
+      await expectVisibleFocus(target)
+      return steps
+    } catch {
+      await page.keyboard.press(direction === 'forward' ? 'Tab' : 'Shift+Tab')
+    }
+  }
+  throw new Error(
+    `Keyboard ${direction} traversal did not reach the expected visible control.`,
+  )
+}
+
+async function downloadText(
+  page: Page,
+  direction: 'forward' | 'backward' = 'forward',
+): Promise<string> {
   const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'JSON書き出し' }).press('Enter')
+  const exportButton = page.getByRole('button', { name: 'JSON書き出し' })
+  await tabUntilActive(page, exportButton, direction)
+  await page.keyboard.press('Enter')
   const stream = await (await download).createReadStream()
   if (!stream) throw new Error('Expected a JSON export stream.')
   let text = ''
@@ -20,15 +55,23 @@ async function downloadText(page: Page): Promise<string> {
   return text
 }
 
-async function selectOptionByLabel(
-  select: ReturnType<Page['getByTestId']>,
-  label: RegExp,
+async function selectNativeOptionByKeyboard(
+  page: Page,
+  select: Locator,
+  label: string,
 ): Promise<void> {
-  const option = select.locator('option').filter({ hasText: label })
-  await select.selectOption(await option.getAttribute('value'))
+  await page.keyboard.press('Home')
+  for (let steps = 0; steps < 8; steps += 1) {
+    if ((await select.locator('option:checked').textContent())?.includes(label)) {
+      await page.keyboard.press('Enter')
+      return
+    }
+    await page.keyboard.press('ArrowDown')
+  }
+  throw new Error(`Keyboard option traversal did not reach ${label}.`)
 }
 
-test('keyboard-only controls cover edit workflows and Escape cancels a real cable draft', async ({
+test('keyboard-only controls follow focus order and Escape cancels a real cable draft', async ({
   page,
 }) => {
   const errors: Error[] = []
@@ -40,54 +83,66 @@ test('keyboard-only controls cover edit workflows and Escape cancels a real cabl
   await page.goto('/')
   await expectNoSeriousOrCritical(page)
 
-  await page.getByRole('button', { name: 'プレビュー' }).focus()
+  const preview = page.getByRole('button', { name: 'プレビュー' })
+  expect(await tabUntilActive(page, preview)).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
   await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
     'data-renderer-profile',
     'preview',
   )
-  await page.getByRole('button', { name: '編集' }).focus()
+  const edit = page.getByRole('button', { name: '編集' })
+  expect(await tabUntilActive(page, edit, 'backward')).toBe(1)
   await page.keyboard.press('Enter')
 
-  await page.getByTestId('catalog-add-desk.l-shaped-sit-stand').focus()
+  const addDesk = page.getByTestId('catalog-add-desk.l-shaped-sit-stand')
+  expect(await tabUntilActive(page, addDesk)).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
-  await expect(page.getByTestId('position-x')).toBeVisible()
-  await page.getByTestId('position-x').focus()
+  const positionX = page.getByTestId('position-x')
+  expect(await tabUntilActive(page, positionX)).toBeGreaterThan(0)
+  await page.keyboard.press('Control+A')
   await page.keyboard.type('75')
   await page.keyboard.press('Enter')
-  await expect(page.getByTestId('position-x')).toHaveValue('75')
-  await page.getByRole('button', { name: '元に戻す' }).focus()
-  await page.keyboard.press('Enter')
-  await page.getByRole('button', { name: '元に戻す' }).focus()
-  await page.keyboard.press('Enter')
-  await expect(page.getByRole('button', { name: '元に戻す' })).toBeDisabled()
+  await expect(positionX).toHaveValue('75')
 
-  await page.locator('.tab-list button').nth(1).focus()
+  const undo = page.getByRole('button', { name: '元に戻す' })
+  expect(await tabUntilActive(page, undo, 'backward')).toBeGreaterThan(0)
+  await page.keyboard.press('Enter')
+  await expectVisibleFocus(undo)
+  await page.keyboard.press('Enter')
+  await expect(undo).toBeDisabled()
+
+  const outlinerTab = page.locator('.tab-list button').nth(1)
+  expect(await tabUntilActive(page, outlinerTab)).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
   const cableRow = page.getByRole('button', { name: /Power cable/ })
-  await cableRow.focus()
+  expect(await tabUntilActive(page, cableRow)).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
   await expect(page.getByTestId('cable-inspector')).toBeVisible()
-  await page.getByTestId('cable-end-end-a-detach').focus()
+  const detach = page.getByTestId('cable-end-end-a-detach')
+  expect(await tabUntilActive(page, detach)).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
-  await page.getByTestId('tool-cable').focus()
+
+  const cableTool = page.getByTestId('tool-cable')
+  expect(await tabUntilActive(page, cableTool, 'backward')).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
-  await selectOptionByLabel(page.getByTestId('cable-tool-end'), /Power cable \/ End A/)
-  await page.getByTestId('cable-tool-begin').focus()
+  const cableEnd = page.getByTestId('cable-tool-end')
+  expect(await tabUntilActive(page, cableEnd)).toBeGreaterThan(0)
+  await selectNativeOptionByKeyboard(page, cableEnd, 'Power cable / End A')
+  await expect(cableEnd.locator('option:checked')).toContainText('Power cable / End A')
+  const begin = page.getByTestId('cable-tool-begin')
+  expect(await tabUntilActive(page, begin)).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
   await expect(page.locator('.cable-tool [role="status"]')).toContainText('端子を選択中')
-  const beforeDraft = await downloadText(page)
-  const undoDisabledBeforeDraft = await page
-    .getByRole('button', { name: '元に戻す' })
-    .isDisabled()
+
+  const beforeDraft = await downloadText(page, 'backward')
+  const undoDisabledBeforeDraft = await undo.isDisabled()
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('cable-tool-cancel')).toHaveCount(0)
   expect(await downloadText(page)).toBe(beforeDraft)
-  expect(await page.getByRole('button', { name: '元に戻す' }).isDisabled()).toBe(
-    undoDisabledBeforeDraft,
-  )
+  expect(await undo.isDisabled()).toBe(undoDisabledBeforeDraft)
 
-  await page.getByRole('button', { name: 'JSON読み込み' }).focus()
+  const importButton = page.getByRole('button', { name: 'JSON読み込み' })
+  expect(await tabUntilActive(page, importButton)).toBe(1)
   await page.keyboard.press('Enter')
   await page.locator('input[type="file"]').setInputFiles({
     name: 'keyboard-roundtrip.json',
@@ -97,41 +152,24 @@ test('keyboard-only controls cover edit workflows and Escape cancels a real cabl
   await expect(page.getByRole('alert')).toHaveCount(0)
 
   await page.setViewportSize({ width: 390, height: 844 })
-  const opener = page.getByRole('button', { name: 'プロパティ' })
-  await opener.focus()
+  const mobileInspector = page.getByRole('button', { name: 'プロパティ' })
+  expect(await tabUntilActive(page, mobileInspector)).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
   const sheet = page.getByTestId('mobile-sheet')
   await expect(sheet).toHaveAttribute('aria-modal', 'true')
   await expectNoSeriousOrCritical(page)
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label')))
-    .toBe('シートを閉じる')
+  await expectVisibleFocus(page.getByRole('button', { name: 'シートを閉じる' }))
   await page.keyboard.press('Escape')
   await expect(sheet).toHaveCount(0)
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          document.activeElement ===
-          document.querySelector('.mobile-controls button:nth-child(3)'),
-      ),
-    )
-    .toBe(true)
+  await expectVisibleFocus(mobileInspector)
 
-  await page.getByTestId('tool-cable').focus()
+  expect(await tabUntilActive(page, cableTool, 'backward')).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
   await expectNoSeriousOrCritical(page)
-  await page.getByRole('button', { name: 'プレビュー' }).focus()
+  expect(await tabUntilActive(page, preview, 'backward')).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
   await expectNoSeriousOrCritical(page)
 
-  const focus = await page.evaluate(() => {
-    const element = document.activeElement as HTMLElement | null
-    const style = element ? getComputedStyle(element) : undefined
-    return { outlineStyle: style?.outlineStyle, outlineWidth: style?.outlineWidth }
-  })
-  expect(focus.outlineStyle).not.toBe('none')
-  expect(focus.outlineWidth).not.toBe('0px')
   expect(errors).toEqual([])
   expect(consoleErrors).toEqual([])
 })
