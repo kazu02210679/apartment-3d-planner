@@ -213,7 +213,9 @@ h3 {
 }
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.38;
+  opacity: 1;
+  background: #252d3d;
+  color: var(--muted);
 }
 .save-state {
   padding: 0 6px;
@@ -499,6 +501,10 @@ input[type='number'] {
 }
 .cable-tool button {
   min-height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--ink);
 }
 .cable-end {
   display: grid;

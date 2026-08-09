@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
 import type { EditorStore } from '../app/editor-store'
 
@@ -8,6 +8,7 @@ function useSnapshot(store: EditorStore) {
 
 export function CableTool({ store }: { readonly store: EditorStore }) {
   const snapshot = useSnapshot(store)
+  const draft = snapshot.cableDraft
   const [cableEnd, setCableEnd] = useState('')
   const [target, setTarget] = useState('')
   const choices = useMemo(
@@ -21,8 +22,17 @@ export function CableTool({ store }: { readonly store: EditorStore }) {
       ),
     [snapshot.scene.entities],
   )
+  useEffect(() => {
+    if (!draft) return
+    const cancelDraftOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      store.cancelCableDraft()
+    }
+    document.addEventListener('keydown', cancelDraftOnEscape)
+    return () => document.removeEventListener('keydown', cancelDraftOnEscape)
+  }, [draft, store])
   if (snapshot.mode !== 'edit' || snapshot.activeTool !== 'cable') return null
-  const draft = snapshot.cableDraft
   const parse = (value: string) => {
     const divider = value.indexOf(':')
     return divider < 0 ? undefined : [value.slice(0, divider), value.slice(divider + 1)]
