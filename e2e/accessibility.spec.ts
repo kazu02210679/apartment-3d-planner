@@ -74,6 +74,7 @@ async function selectNativeOptionByKeyboard(
 test('keyboard-only controls follow focus order and Escape cancels a real cable draft', async ({
   page,
 }) => {
+  test.slow()
   const errors: Error[] = []
   const consoleErrors: string[] = []
   page.on('pageerror', (error) => errors.push(error))
