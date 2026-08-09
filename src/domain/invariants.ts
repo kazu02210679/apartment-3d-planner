@@ -1,4 +1,5 @@
 import { degreesToRadians } from './units'
+import { classifyCableConnection, getCableRouting, isCableEnd } from './connections'
 import { SceneDocumentSchema, type Entity, type SceneDocument } from './schema'
 
 export type SceneInvariantCode =
@@ -7,6 +8,11 @@ export type SceneInvariantCode =
   | 'parent-cycle'
   | 'dangling-endpoint'
   | 'dangling-port'
+  | 'invalid-routing'
+  | 'routing-on-noncable'
+  | 'duplicate-cable-attachment'
+  | 'duplicate-endpoint-pair'
+  | 'incompatible-cable-attachment'
 
 export interface SceneInvariantIssue {
   code: SceneInvariantCode
@@ -62,8 +68,84 @@ export function collectSceneInvariantIssues(scene: SceneDocument): SceneInvarian
     })
   })
 
+  scene.entities.forEach((entity, entityIndex) => {
+    if (entity.catalog?.itemId === 'cable.generic') {
+      try {
+        getCableRouting(entity)
+      } catch (error) {
+        issues.push({
+          code: 'invalid-routing',
+          path: `entities[${entityIndex}].properties.routing`,
+          message: error instanceof Error ? error.message : 'Cable routing is invalid.',
+        })
+      }
+    } else if (entity.properties.routing !== undefined) {
+      issues.push({
+        code: 'routing-on-noncable',
+        path: `entities[${entityIndex}].properties.routing`,
+        message: 'Only cable.generic entities may persist routing data.',
+      })
+    }
+  })
+
   scene.connections.forEach((connection, connectionIndex) => {
     registerId(connection.id, `connections[${connectionIndex}].id`)
+  })
+
+  const occupiedCableEnds = new Set<string>()
+  const canonicalPairs = new Set<string>()
+  scene.connections.forEach((connection, connectionIndex) => {
+    const classification = classifyCableConnection(scene, connection)
+    const cableEndpoints = connection.endpoints.filter((endpoint) =>
+      isCableEnd(scene, endpoint),
+    )
+    for (const cableEndpoint of cableEndpoints) {
+      const key = `${cableEndpoint.entityId}/${cableEndpoint.portId}`
+      if (occupiedCableEnds.has(key)) {
+        issues.push({
+          code: 'duplicate-cable-attachment',
+          path: `connections[${connectionIndex}].endpoints`,
+          message: `Cable end ${key} already has an attachment or legacy-net membership.`,
+        })
+      }
+      occupiedCableEnds.add(key)
+    }
+    if (classification !== 'canonical') return
+    const cableEndpoint = connection.endpoints.find((endpoint) => {
+      const entity = entityById.get(endpoint.entityId)
+      return entity?.catalog?.itemId === 'cable.generic'
+    })!
+    const targetEndpoint = connection.endpoints.find(
+      (endpoint) => endpoint !== cableEndpoint,
+    )!
+    const pair = [
+      `${cableEndpoint.entityId}/${cableEndpoint.portId}`,
+      `${targetEndpoint.entityId}/${targetEndpoint.portId}`,
+    ]
+      .sort()
+      .join('|')
+    if (canonicalPairs.has(pair)) {
+      issues.push({
+        code: 'duplicate-endpoint-pair',
+        path: `connections[${connectionIndex}].endpoints`,
+        message: `Connection endpoint pair ${pair} already exists.`,
+      })
+    }
+    canonicalPairs.add(pair)
+    const cable = entityById.get(cableEndpoint.entityId)!
+    const target = entityById.get(targetEndpoint.entityId)
+    const targetPort = target?.ports.find((port) => port.id === targetEndpoint.portId)
+    try {
+      const routing = getCableRouting(cable)
+      if (routing.kind !== 'generic' && targetPort?.kind !== routing.kind)
+        issues.push({
+          code: 'incompatible-cable-attachment',
+          path: `connections[${connectionIndex}].endpoints`,
+          message: `${routing.kind} cable cannot attach to ${targetPort?.kind ?? 'unknown'} port.`,
+        })
+    } catch {
+      // The routing issue is already reported by the entity validation pass.
+    }
   })
 
   scene.entities.forEach((entity, entityIndex) => {

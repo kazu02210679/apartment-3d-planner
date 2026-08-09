@@ -1,4 +1,4 @@
-import type { CatalogReference, Dimensions, JsonObject } from '../domain/schema'
+import type { CatalogReference, Dimensions, JsonObject, Vector3 } from '../domain/schema'
 
 export type LocalizedText = Readonly<Record<'en' | 'ja', string>>
 
@@ -69,6 +69,8 @@ export interface CatalogPortDefinition {
   readonly id: string
   readonly displayName: LocalizedText
   readonly kind: string
+  readonly position?: Vector3
+  readonly direction?: Vector3
   readonly extensions: JsonObject
 }
 

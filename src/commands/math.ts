@@ -75,6 +75,9 @@ export function transformPoint(matrix: Matrix3, point: Vector3): Vector3 {
     z: matrix[6] * point.x + matrix[7] * point.y + matrix[8] * point.z,
   }
 }
+export function inverseTransformPoint(matrix: Matrix3, point: Vector3): Vector3 {
+  return transformPoint(transpose(matrix), point)
+}
 function subtract(left: Vector3, right: Vector3): Vector3 {
   return { x: left.x - right.x, y: left.y - right.y, z: left.z - right.z }
 }

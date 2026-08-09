@@ -7,7 +7,9 @@ import type {
   RoomDimensions,
   SceneDocument,
   Transform,
+  Vector3,
 } from '../domain/schema'
+import type { CableRouting } from '../domain/connections'
 import type { RoomPresetId } from '../domain/room-presets'
 
 export type SceneCommand =
@@ -78,6 +80,17 @@ export type SceneCommand =
       readonly connection: Connection
     }
   | { readonly type: 'delete-connection'; readonly connectionId: string }
+  | {
+      readonly type: 'set-cable-routing'
+      readonly entityId: string
+      readonly routing: CableRouting
+    }
+  | {
+      readonly type: 'set-cable-port-position'
+      readonly entityId: string
+      readonly portId: string
+      readonly position: Vector3
+    }
 
 export interface CommandResult {
   readonly scene: SceneDocument

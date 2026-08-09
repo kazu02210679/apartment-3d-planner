@@ -1,4 +1,5 @@
 import { getCatalogDefinition, resolveCatalogInstance } from '../catalog/catalog'
+import { getCableRouting, withCableRouting } from '../domain/connections'
 import { findOutOfBoundsEntityIds } from '../domain/invariants'
 import { normalizeScene } from '../domain/normalize'
 import type { Connection, Entity, SceneDocument } from '../domain/schema'
@@ -59,6 +60,8 @@ function catalogEntity(
     id: command.portIds?.[index] ?? nextId(),
     name: port.displayName.en,
     kind: port.kind,
+    ...(port.position ? { position: { ...port.position } } : {}),
+    ...(port.direction ? { direction: { ...port.direction } } : {}),
     extensions: { ...port.extensions, catalogPortId: port.id },
   }))
   const candidate: Entity = {
@@ -139,6 +142,11 @@ export function applyCommand(
         ...(command.presetId === undefined ? {} : { presetId: command.presetId }),
         extensions: target.catalog?.extensions ?? {},
       }
+      if (
+        (target.catalog?.itemId === 'cable.generic') !==
+        (catalog.itemId === 'cable.generic')
+      )
+        throw new Error('Cable catalog identity cannot be changed.')
       const candidate = {
         ...target,
         catalog,
@@ -188,22 +196,38 @@ export function applyCommand(
         ]),
       )
       const portIds = new Map<string, string>()
-      const copies = subtree.map((entity) => ({
-        ...structuredClone(entity),
-        id: entityIds.get(entity.id)!,
-        parentId:
-          entity.parentId !== null && entityIds.has(entity.parentId)
-            ? entityIds.get(entity.parentId)!
-            : entity.parentId,
-        ports: entity.ports.map((port, portIndex) => {
-          const id =
-            entity.id === command.entityId && command.portIds?.[portIndex]
-              ? command.portIds[portIndex]
-              : nextId()
-          portIds.set(port.id, id)
-          return { ...port, id }
-        }),
-      }))
+      const copies = subtree.map((entity) => {
+        const copy = {
+          ...structuredClone(entity),
+          id: entityIds.get(entity.id)!,
+          parentId:
+            entity.parentId !== null && entityIds.has(entity.parentId)
+              ? entityIds.get(entity.parentId)!
+              : entity.parentId,
+          ports: entity.ports.map((port, portIndex) => {
+            const id =
+              entity.id === command.entityId && command.portIds?.[portIndex]
+                ? command.portIds[portIndex]
+                : nextId()
+            portIds.set(port.id, id)
+            return { ...port, id }
+          }),
+        }
+        if (
+          entity.catalog?.itemId === 'cable.generic' &&
+          entity.properties.routing !== undefined
+        ) {
+          const routing = getCableRouting(entity)
+          return withCableRouting(copy, {
+            ...routing,
+            waypoints: routing.waypoints.map((waypoint) => ({
+              ...waypoint,
+              id: nextId(),
+            })),
+          })
+        }
+        return copy
+      })
       scene.entities.push(...copies)
       for (const connection of scene.connections.filter((candidate) =>
         candidate.endpoints.every((endpoint) => entityIds.has(endpoint.entityId)),
@@ -237,6 +261,35 @@ export function applyCommand(
       )
       if (index < 0) throw new Error(`Connection ${command.connectionId} is missing.`)
       scene.connections.splice(index, 1)
+      break
+    }
+    case 'set-cable-routing': {
+      const cable = writable(scene, command.entityId)
+      if (cable.catalog?.itemId !== 'cable.generic')
+        throw new Error('Only cable.generic entities can have cable routing.')
+      replaceEntity(scene, withCableRouting(cable, command.routing))
+      break
+    }
+    case 'set-cable-port-position': {
+      const cable = writable(scene, command.entityId)
+      if (cable.catalog?.itemId !== 'cable.generic')
+        throw new Error('Only cable.generic entities can move cable ends.')
+      const port = cable.ports.find((candidate) => candidate.id === command.portId)
+      if (!port)
+        throw new Error(`Port ${command.portId} is missing on cable ${cable.id}.`)
+      if (
+        port.extensions.catalogPortId !== 'end-a' &&
+        port.extensions.catalogPortId !== 'end-b'
+      )
+        throw new Error('Only cable end ports can be repositioned.')
+      replaceEntity(scene, {
+        ...cable,
+        ports: cable.ports.map((candidate) =>
+          candidate.id === port.id
+            ? { ...candidate, position: structuredClone(command.position) }
+            : candidate,
+        ),
+      })
       break
     }
   }

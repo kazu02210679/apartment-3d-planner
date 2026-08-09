@@ -47,6 +47,85 @@ function rootProps(store: ReturnType<typeof createStore>) {
 }
 
 describe('SceneRoot renderer integration', () => {
+  it('renders routed cable geometry in editor and preview without mutating the scene', async () => {
+    const store = createStore()
+    const cableId = store.addCatalogItem('cable.generic')!
+    const before = store.exportJson()
+    const renderer = await create(<SceneRoot {...rootProps(store)} />)
+
+    expect(renderer.scene.findByProps({ name: `cable-route-${cableId}` })).toBeDefined()
+    store.setMode('preview')
+    await renderer.update(<SceneRoot {...rootProps(store)} />)
+    expect(renderer.scene.findByProps({ name: `cable-route-${cableId}` })).toBeDefined()
+    expect(store.exportJson()).toBe(before)
+  })
+
+  it('shows eligible cable markers only in edit cable mode and routes marker clicks through the store', async () => {
+    const store = createStore()
+    const cableId = store.addCatalogItem('cable.generic')!
+    const targetId = store.addCatalogItem('power.strip')!
+    const cable = store
+      .getSnapshot()
+      .scene.entities.find((entity) => entity.id === cableId)!
+    const target = store
+      .getSnapshot()
+      .scene.entities.find((entity) => entity.id === targetId)!
+    const end = cable.ports.find((port) => port.extensions.catalogPortId === 'end-a')!
+    const targetPort = target.ports.find((port) => port.kind === 'power')!
+    store.setActiveTool('cable')
+    const renderer = await create(<SceneRoot {...rootProps(store)} />)
+
+    expect(
+      renderer.scene.findByProps({ name: `port-marker-${cableId}-${end.id}` }),
+    ).toBeDefined()
+    expect(
+      renderer.scene.findByProps({ name: `port-marker-${targetId}-${targetPort.id}` }),
+    ).toBeDefined()
+    store.setMode('preview')
+    await renderer.update(<SceneRoot {...rootProps(store)} />)
+    expect(() =>
+      renderer.scene.findByProps({ name: `port-marker-${cableId}-${end.id}` }),
+    ).toThrow()
+  })
+
+  it('commits a direct waypoint drag as one cable-routing interaction', async () => {
+    const store = createStore()
+    const cableId = store.addCatalogItem('cable.generic')!
+    store.addCableWaypoint(cableId)
+    store.setActiveTool('cable')
+    const waypoint = (
+      store.getSnapshot().scene.entities.find((entity) => entity.id === cableId)!
+        .properties.routing as unknown as { waypoints: readonly { id: string }[] }
+    ).waypoints[0]!
+    const renderer = await create(<SceneRoot {...rootProps(store)} />)
+    const handle = renderer.scene.findByProps({
+      name: `cable-waypoint-${cableId}-${waypoint.id}`,
+    })
+    const target = { setPointerCapture: vi.fn() }
+    const event = (x: number) => ({
+      stopPropagation: vi.fn(),
+      pointerId: 1,
+      target,
+      unprojectedPoint: { x, y: 0, z: 0 },
+    })
+
+    await handle.props.onPointerDown(event(0))
+    await handle.props.onPointerMove(event(0.2))
+    await handle.props.onPointerUp(event(0.2))
+
+    const moved = store
+      .getSnapshot()
+      .scene.entities.find((entity) => entity.id === cableId)!
+    expect(
+      (
+        moved.properties.routing as unknown as {
+          waypoints: readonly { position: { x: number } }[]
+        }
+      ).waypoints[0]!.position.x,
+    ).toBe(200)
+    expect(store.undo()).toBe(true)
+  })
+
   it('renders selected editor controls and detailed model state styling while omitting hidden entities', async () => {
     const store = createStore()
     const deskId = store.addCatalogItem('desk.l-shaped-sit-stand')!

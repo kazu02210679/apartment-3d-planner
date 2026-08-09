@@ -6,6 +6,7 @@ import { CatalogPanel } from './CatalogPanel'
 import { Inspector } from './Inspector'
 import { Outliner } from './Outliner'
 import { Toolbar } from './Toolbar'
+import { CableTool } from './CableTool'
 
 function useSnapshot(store: EditorStore) {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
@@ -22,6 +23,7 @@ function SceneStage({ store }: { store: EditorStore }) {
       </div>
       <div className="canvas-frame" data-testid="scene-stage">
         <SceneCanvas store={store} />
+        <CableTool store={store} />
       </div>
       <div className="viewport-footer">
         <span>{snapshot.scene.entities.length} エンティティ</span>

@@ -4,6 +4,7 @@ import { getCatalogDefinition, resolveCatalogInstance } from '../catalog/catalog
 import type { Entity, JsonObject, Transform } from '../domain/schema'
 import type { EditorStore } from '../app/editor-store'
 import { NumericField } from './RoomInspector'
+import { CableInspector } from './CableInspector'
 
 function useSnapshot(store: EditorStore) {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
@@ -330,6 +331,7 @@ export function EntityInspector({ store }: { store: EditorStore }) {
           グループから外す
         </button>
       ) : null}
+      <CableInspector store={store} entity={entity} />
       {snapshot.errorMessage ? (
         <p className="error-banner">{snapshot.errorMessage}</p>
       ) : null}

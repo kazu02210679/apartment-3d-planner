@@ -5,6 +5,7 @@ import type {
   DimensionPolicy,
   LocalizedText,
 } from '../types'
+import type { Vector3 } from '../../domain/schema'
 
 const label = (en: string, ja: string): LocalizedText => ({ en, ja })
 const empty = {} as const
@@ -28,8 +29,21 @@ function boundedFor(width: number, depth: number, height: number): DimensionPoli
   }
 }
 
-function port(id: string, en: string, ja: string, kind: string): CatalogPortDefinition {
-  return { id, displayName: label(en, ja), kind, extensions: empty }
+function port(
+  id: string,
+  en: string,
+  ja: string,
+  kind: string,
+  position: Vector3 = id === 'power-in'
+    ? { x: -40, y: 0, z: 0 }
+    : id === 'display-out'
+      ? { x: 0, y: 0, z: 0 }
+      : id === 'network'
+        ? { x: 40, y: 0, z: 0 }
+        : { x: 0, y: 0, z: 0 },
+  direction?: Vector3,
+): CatalogPortDefinition {
+  return { id, displayName: label(en, ja), kind, position, direction, extensions: empty }
 }
 
 function box(
@@ -281,7 +295,10 @@ export const GENERIC_CATALOG_DEFINITIONS: readonly CatalogDefinition[] = [
     20,
     20,
     ['power', 'display', 'network'],
-    [port('end-a', 'End A', '端子A', 'cable'), port('end-b', 'End B', '端子B', 'cable')],
+    [
+      port('end-a', 'End A', '端子A', 'cable', { x: -450, y: 0, z: 0 }),
+      port('end-b', 'End B', '端子B', 'cable', { x: 450, y: 0, z: 0 }),
+    ],
     free,
   ),
   box('waste.trash-bin', 'waste', label('Trash bin', 'ごみ箱'), 300, 300, 500),

@@ -118,6 +118,8 @@ function DetailedModel({ renderable }: { readonly renderable: RenderableEntity }
       return <LivingFurniture {...props} kind="trash" />
     case 'power.strip':
       return <LivingFurniture {...props} kind="power-strip" />
+    case 'cable.generic':
+      return null
     default:
       return (
         <GenericBox

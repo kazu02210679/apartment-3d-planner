@@ -42,6 +42,45 @@ describe('EditorStore', () => {
     expect(store.getSnapshot().selectedEntityId).toBeNull()
   })
 
+  it('keeps a cable draft transient, then attaches one compatible endpoint with one undo and autosave', () => {
+    const idFactory = ids()
+    const autosave = {
+      schedule: vi.fn(),
+      flush: () => ({ state: 'idle' as const }),
+      dispose: () => undefined,
+      getStatus: () => ({ state: 'idle' as const }),
+    }
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+      idFactory,
+      autosave,
+    })
+    const cableId = store.addCatalogItem('cable.generic')!
+    const targetId = store.addCatalogItem('power.strip')!
+    const cable = store
+      .getSnapshot()
+      .scene.entities.find((entity) => entity.id === cableId)!
+    const target = store
+      .getSnapshot()
+      .scene.entities.find((entity) => entity.id === targetId)!
+    const end = cable.ports.find((port) => port.extensions.catalogPortId === 'end-a')!
+    const targetPort = target.ports.find((port) => port.kind === 'power')!
+    autosave.schedule.mockClear()
+    const beforeDraft = store.exportJson()
+
+    expect(store.beginCableDraft(cableId, end.id)).toBe(true)
+    expect(store.getSnapshot().cableDraft).toEqual({ cableId, portId: end.id })
+    expect(store.exportJson()).toBe(beforeDraft)
+    expect(autosave.schedule).not.toHaveBeenCalled()
+
+    expect(store.completeCableDraft(targetId, targetPort.id)).toBe(true)
+    expect(store.getSnapshot().cableDraft).toBeUndefined()
+    expect(store.getSnapshot().scene.connections).toHaveLength(1)
+    expect(autosave.schedule).toHaveBeenCalledTimes(1)
+    expect(store.undo()).toBe(true)
+    expect(store.getSnapshot().scene.connections).toHaveLength(0)
+  })
+
   it('adds through command history, selects by stable id, and falls back to room after delete', () => {
     const idFactory = ids()
     const store = createEditorStore({

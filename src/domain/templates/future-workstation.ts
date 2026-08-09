@@ -37,6 +37,8 @@ function createEntity(nextId: IdFactory, options: WorkstationEntityOptions): Ent
       id: createOpaqueId(nextId),
       name: port.displayName.en,
       kind: port.kind,
+      ...(port.position ? { position: { ...port.position } } : {}),
+      ...(port.direction ? { direction: { ...port.direction } } : {}),
       extensions: { ...port.extensions, catalogPortId: port.id },
     })),
     properties: {},
@@ -198,6 +200,24 @@ export function createFutureWorkstationScene(
     name: 'Network cable',
     position: { x: 700, y: 30, z: 350 },
   })
+  powerCable.properties.routing = {
+    version: 1,
+    kind: 'power',
+    diameterMm: 8,
+    waypoints: [],
+  }
+  displayCable.properties.routing = {
+    version: 1,
+    kind: 'display',
+    diameterMm: 7,
+    waypoints: [],
+  }
+  networkCable.properties.routing = {
+    version: 1,
+    kind: 'network',
+    diameterMm: 6,
+    waypoints: [],
+  }
   add({ itemId: 'sleep.bed-futon', name: 'Futon', position: { x: 700, y: 175, z: 700 } })
   add({
     itemId: 'table.side',
@@ -214,6 +234,9 @@ export function createFutureWorkstationScene(
   addConnection(scene, nextId, 'power', [
     [powerCable, 'end-a'],
     [powerStripOne, 'outlet'],
+  ])
+  addConnection(scene, nextId, 'power', [
+    [powerCable, 'end-b'],
     [windows, 'power-in'],
   ])
   addConnection(scene, nextId, 'power', [
@@ -225,12 +248,16 @@ export function createFutureWorkstationScene(
   addConnection(scene, nextId, 'display', [
     [displayCable, 'end-a'],
     [windows, 'display-out'],
+  ])
+  addConnection(scene, nextId, 'display', [
     [displayCable, 'end-b'],
     [monitors[0], 'display-input'],
   ])
   addConnection(scene, nextId, 'network', [
     [networkCable, 'end-a'],
     [windows, 'network'],
+  ])
+  addConnection(scene, nextId, 'network', [
     [networkCable, 'end-b'],
     [mac, 'network'],
   ])

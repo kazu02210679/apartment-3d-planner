@@ -6,6 +6,14 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 
 import type { SceneDocument } from '../domain/schema'
 import { EntityRenderer } from './entities/EntityRenderer'
+import { Cable } from './entities/Cable'
+import { PortMarker } from './entities/PortMarker'
+import { CableWaypointHandles } from './entities/CableWaypointHandles'
+import {
+  getCableRouting,
+  resolveCableRoute,
+  resolvePortWorldAnchor,
+} from '../domain/connections'
 import { PreviewEnvironment } from './PreviewEnvironment'
 import { getRendererProfile } from './quality'
 import { RoomShell } from './RoomShell'
@@ -123,6 +131,14 @@ export function SceneRoot({
   )
   const childrenOf = (parentId: string | null) =>
     scene.entities.filter((entity) => entity.parentId === parentId)
+  const cables = scene.entities.filter(
+    (entity) => entity.catalog?.itemId === 'cable.generic' && entity.visible,
+  )
+  const selectPort = (entityId: string, portId: string) => {
+    const draft = store.getSnapshot().cableDraft
+    if (draft) store.completeCableDraft(entityId, portId)
+    else store.beginCableDraft(entityId, portId)
+  }
   const renderEntity = (entity: SceneDocument['entities'][number]) => (
     <EntityRenderer
       key={entity.id}
@@ -156,6 +172,54 @@ export function SceneRoot({
       <PreviewEnvironment profile={profile} />
       <RoomShell room={scene.room} onEmptyHit={onEmptyHit} profile={profile} />
       {childrenOf(null).map(renderEntity)}
+      {cables.map((cable) => {
+        try {
+          const routing = getCableRouting(cable)
+          return (
+            <Cable
+              key={`route-${cable.id}`}
+              id={cable.id}
+              kind={routing.kind}
+              diameterMm={routing.diameterMm}
+              points={resolveCableRoute(scene, cable)}
+              selected={selectedEntityIds.includes(cable.id)}
+              onSelect={onEntitySelect}
+            />
+          )
+        } catch {
+          return null
+        }
+      })}
+      {mode === 'edit' && activeTool === 'cable'
+        ? scene.entities.flatMap((entity) => {
+            if (!entity.visible || entity.locked) return []
+            return entity.ports.map((port) => {
+              const endpoint = { entityId: entity.id, portId: port.id }
+              try {
+                return (
+                  <PortMarker
+                    key={`marker-${entity.id}-${port.id}`}
+                    entityId={entity.id}
+                    portId={port.id}
+                    position={resolvePortWorldAnchor(scene, endpoint)}
+                    onSelect={selectPort}
+                  />
+                )
+              } catch {
+                return null
+              }
+            })
+          })
+        : null}
+      {mode === 'edit' && activeTool === 'cable'
+        ? cables.map((cable) => (
+            <CableWaypointHandles
+              key={`waypoint-handles-${cable.id}`}
+              cable={cable}
+              store={store}
+            />
+          ))
+        : null}
       {mode === 'edit' && selectedId ? (
         <TransformGizmo
           entityId={selectedId}

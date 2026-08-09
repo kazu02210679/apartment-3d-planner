@@ -93,6 +93,88 @@ describe('SceneDocument graph invariants', () => {
     expect(() => validateSceneInvariants(scene)).toThrow('dangling-port')
   })
 
+  it('validates cable routing at invariant boundaries and reserves it for cable entities', () => {
+    const invalidCable = makeEntity('cable', { x: 0, y: 500, z: 0 })
+    invalidCable.catalog = { itemId: 'cable.generic', revision: '1', extensions: {} }
+    invalidCable.properties = {
+      routing: { version: 1, kind: 'power', diameterMm: -1, waypoints: [] },
+    }
+    const cableScene = makeScene()
+    cableScene.entities.push(invalidCable)
+    expect(() => validateSceneInvariants(cableScene)).toThrow('invalid-routing')
+
+    const invalidNonCable = makeEntity('non-cable', { x: 0, y: 500, z: 0 })
+    invalidNonCable.properties = {
+      routing: { version: 1, kind: 'generic', diameterMm: 8, waypoints: [] },
+    }
+    const nonCableScene = makeScene()
+    nonCableScene.entities.push(invalidNonCable)
+    expect(() => validateSceneInvariants(nonCableScene)).toThrow('routing-on-noncable')
+  })
+
+  it('blocks a new canonical attachment when a cable end belongs to a legacy net', () => {
+    const cable = makeEntity('cable', { x: 0, y: 500, z: 0 })
+    cable.catalog = { itemId: 'cable.generic', revision: '1', extensions: {} }
+    cable.ports = [
+      { id: 'end-a', name: 'A', kind: 'power', extensions: { catalogPortId: 'end-a' } },
+      { id: 'end-b', name: 'B', kind: 'power', extensions: { catalogPortId: 'end-b' } },
+    ]
+    const firstTarget = makeEntity('first-target', { x: 0, y: 500, z: 0 })
+    const secondTarget = makeEntity('second-target', { x: 0, y: 500, z: 0 })
+    const scene = makeScene()
+    scene.entities.push(cable, firstTarget, secondTarget)
+    scene.connections.push(
+      {
+        id: 'legacy-net',
+        endpoints: [
+          { entityId: 'cable', portId: 'end-a' },
+          { entityId: 'first-target', portId: 'first-target-power' },
+          { entityId: 'second-target', portId: 'second-target-power' },
+        ],
+        properties: {},
+        extensions: {},
+      },
+      {
+        id: 'competing-canonical',
+        endpoints: [
+          { entityId: 'cable', portId: 'end-a' },
+          { entityId: 'second-target', portId: 'second-target-power' },
+        ],
+        properties: {},
+        extensions: {},
+      },
+    )
+
+    expect(() => validateSceneInvariants(scene)).toThrow('duplicate-cable-attachment')
+  })
+
+  it('rejects duplicate endpoint pairs and incompatible canonical cable targets', () => {
+    const cable = makeEntity('cable', { x: 0, y: 500, z: 0 })
+    cable.catalog = { itemId: 'cable.generic', revision: '1', extensions: {} }
+    cable.ports = [
+      { id: 'end-a', name: 'A', kind: 'power', extensions: { catalogPortId: 'end-a' } },
+      { id: 'end-b', name: 'B', kind: 'power', extensions: { catalogPortId: 'end-b' } },
+    ]
+    cable.properties = {
+      routing: { version: 1, kind: 'power', diameterMm: 8, waypoints: [] },
+    }
+    const target = makeEntity('target', { x: 0, y: 500, z: 0 })
+    target.ports[0] = { ...target.ports[0]!, kind: 'display' }
+    const scene = makeScene()
+    scene.entities.push(cable, target)
+    scene.connections.push({
+      id: 'wrong-kind',
+      endpoints: [
+        { entityId: 'cable', portId: 'end-a' },
+        { entityId: 'target', portId: 'target-power' },
+      ],
+      properties: {},
+      extensions: {},
+    })
+
+    expect(() => validateSceneInvariants(scene)).toThrow('incompatible-cable-attachment')
+  })
+
   it('normalizes equivalent documents deterministically without adding renderer state', () => {
     const scene = makeScene()
     scene.entities.push(makeEntity('entity-b', { x: 200, y: 500, z: 0 }))

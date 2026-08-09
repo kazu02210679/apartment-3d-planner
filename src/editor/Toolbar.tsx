@@ -66,10 +66,12 @@ export function Toolbar({ store }: { store: EditorStore }) {
               ['move', '移動'],
               ['rotate', '回転'],
               ['resize', 'サイズ'],
+              ['cable', 'ケーブル'],
             ] as const
           ).map(([tool, label]) => (
             <button
               key={tool}
+              data-testid={`tool-${tool}`}
               className={`mode-button ${snapshot.activeTool === tool ? 'is-active' : ''}`}
               type="button"
               aria-label={`${label}ツール`}

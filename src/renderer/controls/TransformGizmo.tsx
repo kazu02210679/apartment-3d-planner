@@ -27,7 +27,7 @@ export function TransformGizmo({
 
   useEffect(() => {
     const control = controls.current
-    if (!control || !object || !enabled || tool === 'resize') return
+    if (!control || !object || !enabled || tool === 'resize' || tool === 'cable') return
     const events = control as unknown as {
       addEventListener(
         type: string,
@@ -79,7 +79,7 @@ export function TransformGizmo({
     if (!enabled && controller.active) controller.cancel()
   }, [controller, enabled])
 
-  if (!object || !enabled || tool === 'resize') return null
+  if (!object || !enabled || tool === 'resize' || tool === 'cable') return null
   return (
     <TransformControls
       ref={controls}

@@ -15,6 +15,13 @@ import {
 import { createCommandStore, type SceneCommand } from '../commands/command-store'
 import { sameScene } from '../commands/history'
 import { findOutOfBoundsEntityIds } from '../domain/invariants'
+import {
+  classifyCableConnection,
+  getCableEndAttachment,
+  getCableRouting,
+  isCableEnd,
+  type CableRouting,
+} from '../domain/connections'
 import { createFutureWorkstationScene } from '../domain/templates/future-workstation'
 import { ROOM_PRESETS, type RoomPresetId } from '../domain/room-presets'
 import type {
@@ -23,12 +30,17 @@ import type {
   JsonObject,
   SceneDocument,
   Transform,
+  Vector3,
 } from '../domain/schema'
 
 export type EditorMode = 'edit' | 'preview'
 export type LeftTab = 'catalog' | 'outliner'
 export type MobilePanel = 'none' | 'catalog' | 'outliner' | 'inspector'
-export type EditorTool = 'move' | 'rotate' | 'resize'
+export type EditorTool = 'move' | 'rotate' | 'resize' | 'cable'
+export interface CableDraft {
+  readonly cableId: string
+  readonly portId: string
+}
 
 export interface EditorSnapshot {
   readonly scene: SceneDocument
@@ -47,6 +59,7 @@ export interface EditorSnapshot {
   readonly translationSnap: number
   readonly rotationSnap: number
   readonly floorSnap: boolean
+  readonly cableDraft?: CableDraft
   readonly errorMessage?: string
 }
 
@@ -87,6 +100,21 @@ export interface EditorActions {
   setTranslationSnap(millimetres: number): void
   setRotationSnap(degrees: number): void
   setFloorSnap(enabled: boolean): void
+  beginCableDraft(cableId: string, portId: string): boolean
+  cancelCableDraft(): void
+  completeCableDraft(targetEntityId: string, targetPortId: string): boolean
+  detachCableEnd(cableId: string, portId: string): boolean
+  setCableRouting(entityId: string, routing: CableRouting): boolean
+  addCableWaypoint(entityId: string): boolean
+  updateCableWaypoint(entityId: string, waypointId: string, position: Vector3): boolean
+  deleteCableWaypoint(entityId: string, waypointId: string): boolean
+  beginCableWaypointInteraction(entityId: string, waypointId: string): boolean
+  updateCableWaypointInteraction(
+    entityId: string,
+    waypointId: string,
+    position: Vector3,
+  ): boolean
+  setCableEndPosition(entityId: string, portId: string, position: Vector3): boolean
   beginInteraction(label: string, target?: unknown): boolean
   updateInteractionTransform(entityId: string, transform: Transform): boolean
   updateInteractionDimensions(entityId: string, dimensions: Dimensions): boolean
@@ -330,6 +358,26 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       }
     }
     return { type: 'set-catalog', entityId: entity.id, catalog, overrides }
+  }
+
+  const cableEnd = (scene: SceneDocument, cableId: string, portId: string) => {
+    const cable = scene.entities.find((entity) => entity.id === cableId)
+    const endpoint = { entityId: cableId, portId }
+    return cable?.catalog?.itemId === 'cable.generic' && isCableEnd(scene, endpoint)
+      ? cable
+      : undefined
+  }
+  const nextPersistentId = () => {
+    const used = new Set([
+      ...commandStore.scene.entities.map((entity) => entity.id),
+      ...commandStore.scene.entities.flatMap((entity) =>
+        entity.ports.map((port) => port.id),
+      ),
+      ...commandStore.scene.connections.map((connection) => connection.id),
+    ])
+    let id = idFactory()
+    while (used.has(id)) id = idFactory()
+    return id
   }
 
   const replaceScene = (scene: SceneDocument, save = true): boolean => {
@@ -681,6 +729,171 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       snapshot = { ...snapshot, floorSnap, errorMessage: undefined }
       publish()
     },
+    beginCableDraft(cableId, portId) {
+      const scene = commandStore.scene
+      const cable = cableEnd(scene, cableId, portId)
+      if (snapshot.mode !== 'edit' || !cable || cable.locked || !cable.visible) {
+        publish('ケーブル端子を選択できません。')
+        return false
+      }
+      if (getCableEndAttachment(scene, cableId, portId)) {
+        publish('このケーブル端子は既に接続されています。')
+        return false
+      }
+      snapshot = { ...snapshot, cableDraft: { cableId, portId }, errorMessage: undefined }
+      publish()
+      return true
+    },
+    cancelCableDraft() {
+      snapshot = { ...snapshot, cableDraft: undefined, errorMessage: undefined }
+      publish()
+    },
+    completeCableDraft(targetEntityId, targetPortId) {
+      const draft = snapshot.cableDraft
+      const scene = commandStore.scene
+      if (snapshot.mode !== 'edit' || !draft) return false
+      const cable = cableEnd(scene, draft.cableId, draft.portId)
+      const target = scene.entities.find((entity) => entity.id === targetEntityId)
+      const targetPort = target?.ports.find((port) => port.id === targetPortId)
+      if (
+        !cable ||
+        !target ||
+        target.catalog?.itemId === 'cable.generic' ||
+        target.locked ||
+        !target.visible ||
+        !targetPort
+      ) {
+        publish('接続先ポートを選択できません。')
+        return false
+      }
+      const routing = getCableRouting(cable)
+      if (routing.kind !== 'generic' && routing.kind !== targetPort.kind) {
+        publish('ケーブル種別と接続先ポートの種類が一致しません。')
+        return false
+      }
+      const changed = sceneAction(
+        {
+          type: 'add-connection',
+          connection: {
+            id: nextPersistentId(),
+            kind: routing.kind,
+            endpoints: [
+              { entityId: draft.cableId, portId: draft.portId },
+              { entityId: targetEntityId, portId: targetPortId },
+            ],
+            properties: {},
+            extensions: {},
+          },
+        },
+        () => {
+          snapshot = { ...snapshot, cableDraft: undefined }
+        },
+      )
+      return changed
+    },
+    detachCableEnd(cableId, portId) {
+      const scene = commandStore.scene
+      const connection = getCableEndAttachment(scene, cableId, portId)
+      if (!connection) return false
+      if (classifyCableConnection(scene, connection) !== 'canonical') {
+        publish('既存のレガシー接続は読み取り専用です。')
+        return false
+      }
+      return sceneAction({ type: 'delete-connection', connectionId: connection.id })
+    },
+    setCableRouting(entityId, routing) {
+      return sceneAction({ type: 'set-cable-routing', entityId, routing })
+    },
+    addCableWaypoint(entityId) {
+      const cable = commandStore.scene.entities.find((entity) => entity.id === entityId)
+      if (!cable || cable.catalog?.itemId !== 'cable.generic') return false
+      const routing = getCableRouting(cable)
+      if (routing.waypoints.length >= 64) return false
+      return sceneAction({
+        type: 'set-cable-routing',
+        entityId,
+        routing: {
+          ...routing,
+          waypoints: [
+            ...routing.waypoints,
+            { id: nextPersistentId(), position: { x: 0, y: 0, z: 0 } },
+          ],
+        },
+      })
+    },
+    updateCableWaypoint(entityId, waypointId, position) {
+      const cable = commandStore.scene.entities.find((entity) => entity.id === entityId)
+      if (!cable || cable.catalog?.itemId !== 'cable.generic') return false
+      const routing = getCableRouting(cable)
+      if (!routing.waypoints.some((waypoint) => waypoint.id === waypointId)) return false
+      return sceneAction({
+        type: 'set-cable-routing',
+        entityId,
+        routing: {
+          ...routing,
+          waypoints: routing.waypoints.map((waypoint) =>
+            waypoint.id === waypointId
+              ? { ...waypoint, position: clone(position) }
+              : waypoint,
+          ),
+        },
+      })
+    },
+    deleteCableWaypoint(entityId, waypointId) {
+      const cable = commandStore.scene.entities.find((entity) => entity.id === entityId)
+      if (!cable || cable.catalog?.itemId !== 'cable.generic') return false
+      const routing = getCableRouting(cable)
+      if (!routing.waypoints.some((waypoint) => waypoint.id === waypointId)) return false
+      return sceneAction({
+        type: 'set-cable-routing',
+        entityId,
+        routing: {
+          ...routing,
+          waypoints: routing.waypoints.filter((waypoint) => waypoint.id !== waypointId),
+        },
+      })
+    },
+    beginCableWaypointInteraction(entityId, waypointId) {
+      const cable = commandStore.scene.entities.find((entity) => entity.id === entityId)
+      if (!cable || cable.catalog?.itemId !== 'cable.generic' || cable.locked)
+        return false
+      if (
+        !getCableRouting(cable).waypoints.some((waypoint) => waypoint.id === waypointId)
+      )
+        return false
+      return store.beginInteraction('move cable waypoint', { entityId, waypointId })
+    },
+    updateCableWaypointInteraction(entityId, waypointId, position) {
+      const cable = commandStore.scene.entities.find((entity) => entity.id === entityId)
+      if (!cable || cable.catalog?.itemId !== 'cable.generic') return false
+      const routing = getCableRouting(cable)
+      if (!routing.waypoints.some((waypoint) => waypoint.id === waypointId)) return false
+      return interactionAction({
+        type: 'set-cable-routing',
+        entityId,
+        routing: {
+          ...routing,
+          waypoints: routing.waypoints.map((waypoint) =>
+            waypoint.id === waypointId
+              ? { ...waypoint, position: clone(position) }
+              : waypoint,
+          ),
+        },
+      })
+    },
+    setCableEndPosition(entityId, portId, position) {
+      const scene = commandStore.scene
+      if (getCableEndAttachment(scene, entityId, portId)) {
+        publish('接続中の端子は移動できません。')
+        return false
+      }
+      return sceneAction({
+        type: 'set-cable-port-position',
+        entityId,
+        portId,
+        position: clone(position),
+      })
+    },
     beginInteraction(label, target) {
       if (snapshot.mode !== 'edit' || commandStore.activeInteraction) return false
       try {
@@ -892,6 +1105,43 @@ export class EditorStoreClass implements EditorStore {
   }
   setFloorSnap(enabled: boolean) {
     return this.delegate.setFloorSnap(enabled)
+  }
+  beginCableDraft(cableId: string, portId: string) {
+    return this.delegate.beginCableDraft(cableId, portId)
+  }
+  cancelCableDraft() {
+    return this.delegate.cancelCableDraft()
+  }
+  completeCableDraft(targetEntityId: string, targetPortId: string) {
+    return this.delegate.completeCableDraft(targetEntityId, targetPortId)
+  }
+  detachCableEnd(cableId: string, portId: string) {
+    return this.delegate.detachCableEnd(cableId, portId)
+  }
+  setCableRouting(entityId: string, routing: CableRouting) {
+    return this.delegate.setCableRouting(entityId, routing)
+  }
+  addCableWaypoint(entityId: string) {
+    return this.delegate.addCableWaypoint(entityId)
+  }
+  updateCableWaypoint(entityId: string, waypointId: string, position: Vector3) {
+    return this.delegate.updateCableWaypoint(entityId, waypointId, position)
+  }
+  deleteCableWaypoint(entityId: string, waypointId: string) {
+    return this.delegate.deleteCableWaypoint(entityId, waypointId)
+  }
+  beginCableWaypointInteraction(entityId: string, waypointId: string) {
+    return this.delegate.beginCableWaypointInteraction(entityId, waypointId)
+  }
+  updateCableWaypointInteraction(
+    entityId: string,
+    waypointId: string,
+    position: Vector3,
+  ) {
+    return this.delegate.updateCableWaypointInteraction(entityId, waypointId, position)
+  }
+  setCableEndPosition(entityId: string, portId: string, position: Vector3) {
+    return this.delegate.setCableEndPosition(entityId, portId, position)
   }
   beginInteraction(label: string, target?: unknown) {
     return this.delegate.beginInteraction(label, target)

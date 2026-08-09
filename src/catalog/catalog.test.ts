@@ -64,6 +64,19 @@ describe('generic catalog', () => {
     expect(Object.isFrozen(CATALOG_DEFINITIONS[0])).toBe(true)
   })
 
+  it('defines stable local port anchors and copies them into catalog instances', () => {
+    const cable = getCatalogDefinition('cable.generic')
+    const endA = cable.ports.find((port) => port.id === 'end-a')
+    const endB = cable.ports.find((port) => port.id === 'end-b')
+    const templateCable = templateEntity('cable.generic')
+
+    expect(endA?.position).toEqual({ x: -450, y: 0, z: 0 })
+    expect(endB?.position).toEqual({ x: 450, y: 0, z: 0 })
+    expect(templateCable.ports.map((port) => port.position)).toEqual(
+      cable.ports.map((port) => port.position),
+    )
+  })
+
   it('resolves definition defaults, then preset, then instance override', () => {
     const monitor = getCatalogDefinition('display.monitor')
 

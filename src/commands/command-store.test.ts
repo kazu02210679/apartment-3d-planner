@@ -59,6 +59,60 @@ function expectWorldTransformClose(
 }
 
 describe('CommandStore', () => {
+  it('updates cable routing and free-end positions through bounded persistent commands', () => {
+    const initial = scene()
+    const store = createCommandStore(initial, { idFactory: ids() })
+    store.execute({ type: 'add-catalog-entity', itemId: 'cable.generic', id: 'cable' })
+
+    store.execute({
+      type: 'set-cable-routing',
+      entityId: 'cable',
+      routing: {
+        version: 1,
+        kind: 'display',
+        diameterMm: 6,
+        waypoints: [{ id: 'waypoint', position: { x: 10, y: 20, z: 30 } }],
+      },
+    })
+    store.execute({
+      type: 'set-cable-port-position',
+      entityId: 'cable',
+      portId: 'generated-2',
+      position: { x: -200, y: 25, z: 10 },
+    })
+
+    const cable = store.scene.entities.find((candidate) => candidate.id === 'cable')!
+    expect(cable.properties.routing).toMatchObject({ kind: 'display', diameterMm: 6 })
+    expect(cable.ports.find((port) => port.id === 'generated-2')?.position).toEqual({
+      x: -200,
+      y: 25,
+      z: 10,
+    })
+  })
+
+  it('rejects catalog transitions into or out of cable.generic', () => {
+    const initial = scene()
+    const cable = entity('cable')
+    cable.catalog = { itemId: 'cable.generic', revision: '1', extensions: {} }
+    initial.entities.push(cable, entity('computer'))
+    const store = createCommandStore(initial)
+
+    expect(() =>
+      store.execute({
+        type: 'set-catalog',
+        entityId: 'cable',
+        itemId: 'computer.windows-tower',
+      }),
+    ).toThrow('Cable catalog identity cannot be changed.')
+    expect(() =>
+      store.execute({
+        type: 'set-catalog',
+        entityId: 'computer',
+        itemId: 'cable.generic',
+      }),
+    ).toThrow('Cable catalog identity cannot be changed.')
+  })
+
   it('executes every persistent command and undo then redo reproduce its normalized digest', () => {
     const initial = scene()
     initial.entities.push(entity('one'), entity('two'))
