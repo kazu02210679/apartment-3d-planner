@@ -14,13 +14,23 @@ const tracked = execFileSync('git', ['ls-files', '-z'], {
   .split('\0')
   .filter(Boolean)
 const files = new Map<string, string>()
+const binaryPaths = new Set<string>()
 
 for (const path of tracked) {
-  files.set(path, readFileSync(resolve(repositoryRoot, path), 'utf8'))
+  const bytes = readFileSync(resolve(repositoryRoot, path))
+  if (bytes.includes(0) || bytes.some((byte) => byte < 9 || (byte > 13 && byte < 32))) {
+    binaryPaths.add(path)
+  }
+  try {
+    files.set(path, new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+  } catch {
+    binaryPaths.add(path)
+    files.set(path, '')
+  }
 }
 
 const samplePath = 'public/samples/future-workstation-apartment.json'
-const violations = scanRepositoryFiles(files)
+const violations = scanRepositoryFiles(files, binaryPaths)
 if (!isCanonicalPublicSample(files.get(samplePath) ?? '')) {
   violations.push(`${samplePath}:stale-or-noncanonical-sample`)
 }

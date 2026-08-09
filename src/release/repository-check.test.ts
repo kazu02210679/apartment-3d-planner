@@ -72,6 +72,7 @@ describe('repository public-release check', () => {
           "main { background: url('https://example.invalid/image.png'); }\n",
         'src/imported-style.css': '@import "https://example.invalid/style.css";\n',
         'src/lazy.ts': "await import('https://example.invalid/module.js')\n",
+        'src/loader.ts': "loader.load('https://example.invalid/model.glb')\n",
         'index.html': '<img src="https://example.invalid/image.png">\n',
         'e2e/accident.spec.ts':
           "const credential = 'sk-proj-abcdefghijklmnopqrstuvwxyz0123456789'\n",
@@ -86,6 +87,7 @@ describe('repository public-release check', () => {
     expect(violations).toContain('src/remote-style.css:runtime-network-api')
     expect(violations).toContain('src/imported-style.css:runtime-network-api')
     expect(violations).toContain('src/lazy.ts:runtime-network-api')
+    expect(violations).toContain('src/loader.ts:runtime-network-api')
     expect(violations).toContain('index.html:runtime-network-api')
     expect(violations).toContain('e2e/accident.spec.ts:token-pattern')
     expect(violations).toContain('.npmrc:private-credential-file')
@@ -107,5 +109,18 @@ describe('repository public-release check', () => {
     expect(scanRepositoryFiles(unsafeExample)).toContain(
       '.env.example:suspicious-secret-assignment',
     )
+  })
+
+  it('requires attribution for unknown-extension binary content', () => {
+    const undocumented = publicFiles({ 'public/model.wasm': '\u0000asm\u0001' })
+    const documented = publicFiles({
+      'public/model.wasm': '\u0000asm\u0001',
+      'docs/assets.md': '# Public\nmodel.wasm\n',
+    })
+
+    expect(scanRepositoryFiles(undocumented)).toContain(
+      'public/model.wasm:undocumented-binary-asset',
+    )
+    expect(scanRepositoryFiles(documented)).toEqual([])
   })
 })

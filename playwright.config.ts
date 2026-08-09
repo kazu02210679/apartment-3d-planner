@@ -20,10 +20,18 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'npm run build && tsx scripts/serve-dist.ts',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'npm run build && tsx scripts/serve-dist.ts',
+      url: 'http://127.0.0.1:4173/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: 'tsx scripts/serve-dist.ts --port=4174 --prefix-only',
+      url: 'http://127.0.0.1:4174/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 })

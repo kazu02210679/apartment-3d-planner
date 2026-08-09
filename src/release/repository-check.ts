@@ -33,6 +33,7 @@ const localPathPattern = new RegExp(
 )
 const runtimeNetworkPattern =
   /\b(fetch|XMLHttpRequest|WebSocket|EventSource)\b|(?:from\s*|import\s*\(\s*|@import\s*)['"]https?:\/\/|url\(\s*['"]?https?:\/\/|(?:src|href)\s*=\s*['"]https?:\/\//i
+const remoteLiteralPattern = /https?:\/\/[^\s'"`<>]+/i
 const placeholderSecretValuePattern =
   /^(?:|example(?:[-_ ](?:key|token|value))?|your[-_ ]?(?:api[-_ ]?)?(?:key|token)|changeme|replace[-_ ]?me|redacted|<[^>]+>)$/i
 
@@ -45,6 +46,7 @@ function isExplicitContentCheckExclusion(path: string): boolean {
 function isRuntimeNetworkCheckExclusion(path: string): boolean {
   return (
     path.includes('/fixtures/') ||
+    path.startsWith('src/test/') ||
     path.includes('.test.') ||
     path.startsWith('e2e/') ||
     path === 'src/release/repository-check.ts'
@@ -68,7 +70,25 @@ function hasNonPlaceholderSecretAssignment(content: string): boolean {
   )
 }
 
-export function scanRepositoryFiles(files: ReadonlyMap<string, string>): string[] {
+function hasUnexpectedRemoteLiteral(content: string): boolean {
+  return remoteLiteralPattern.test(
+    content
+      .replaceAll('http://www.w3.org/2000/svg', '')
+      .replace(/\bproductUrl\s*:\s*['"]https?:\/\/[^'"]+['"]/g, ''),
+  )
+}
+
+function hasBinaryControl(content: string): boolean {
+  return [...content].some((character) => {
+    const code = character.charCodeAt(0)
+    return code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31)
+  })
+}
+
+export function scanRepositoryFiles(
+  files: ReadonlyMap<string, string>,
+  binaryPaths: ReadonlySet<string> = new Set(),
+): string[] {
   const violations = new Set<string>()
   const assetsDocument = files.get('docs/assets.md') ?? ''
 
@@ -87,7 +107,11 @@ export function scanRepositoryFiles(files: ReadonlyMap<string, string>): string[
       if (localPathPattern.test(content)) violations.add(`${path}:absolute-local-path`)
     }
     if (privateFilePattern.test(path)) violations.add(`${path}:private-credential-file`)
-    if (binaryAssetPattern.test(path)) {
+    if (
+      binaryPaths.has(path) ||
+      binaryAssetPattern.test(path) ||
+      hasBinaryControl(content)
+    ) {
       if (!assetsDocument.includes(posix.basename(path))) {
         violations.add(`${path}:undocumented-binary-asset`)
       }
@@ -102,7 +126,7 @@ export function scanRepositoryFiles(files: ReadonlyMap<string, string>): string[
     if (
       (path === 'index.html' || path.startsWith('src/')) &&
       !isRuntimeNetworkCheckExclusion(path) &&
-      runtimeNetworkPattern.test(content)
+      (runtimeNetworkPattern.test(content) || hasUnexpectedRemoteLiteral(content))
     ) {
       violations.add(`${path}:runtime-network-api`)
     }

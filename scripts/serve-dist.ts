@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url'
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const distDirectory = resolve(repositoryRoot, 'dist')
 const prefix = '/apartment-planner/'
-const port = Number(process.env.PORT ?? '4173')
+const portArgument = process.argv.find((argument) => argument.startsWith('--port='))
+const port = Number(portArgument?.slice('--port='.length) ?? process.env.PORT ?? '4173')
+const prefixOnly = process.argv.includes('--prefix-only')
 const contentTypes: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
@@ -24,10 +26,14 @@ function safeFile(pathname: string): string | undefined {
 
 createServer((request, response) => {
   const requestPath = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
-  const isRootRequest = requestPath === '/'
+  if (requestPath === '/health') {
+    response.writeHead(204)
+    response.end()
+    return
+  }
   const isSubpathRequest =
     requestPath === '/apartment-planner' || requestPath.startsWith(prefix)
-  if (!isRootRequest && !isSubpathRequest) {
+  if (prefixOnly && !isSubpathRequest) {
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
     response.end('Not found')
     return
@@ -35,7 +41,7 @@ createServer((request, response) => {
 
   const relativePath = requestPath.startsWith(prefix)
     ? requestPath.slice(prefix.length)
-    : ''
+    : requestPath
   const candidate = safeFile(relativePath)
   const isAssetRequest = relativePath.startsWith('assets/')
   const file =
