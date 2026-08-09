@@ -3,7 +3,7 @@ import { Component, useState, useSyncExternalStore, type ReactNode } from 'react
 
 import type { EditorStore } from '../app/editor-store'
 import { FallbackPanel } from './FallbackPanel'
-import { isWebGLAvailable } from './quality'
+import { getRendererProfile, isWebGLAvailable } from './quality'
 import { SceneRoot, type CameraIntent } from './SceneRoot'
 import { createInteractionController } from './controls/interaction-controller'
 import { toRendererTransform } from './adapters'
@@ -37,6 +37,7 @@ export function SceneCanvas({
   webglAvailable = isWebGLAvailable,
 }: SceneCanvasProps) {
   const snapshot = useSnapshot(store)
+  const profile = getRendererProfile(snapshot.mode)
   const available = webglAvailable()
   const [cameraIntent, setCameraIntent] = useState<CameraIntent>('idle')
   const requestCameraIntent = (intent: CameraIntent) => {
@@ -62,7 +63,11 @@ export function SceneCanvas({
   }
 
   return (
-    <div className="scene-canvas" data-testid="scene-canvas">
+    <div
+      className="scene-canvas"
+      data-testid="scene-canvas"
+      data-renderer-profile={profile.id}
+    >
       <nav className="scene-camera-controls" aria-label="Camera controls">
         <button
           type="button"
@@ -120,9 +125,9 @@ export function SceneCanvas({
           <Canvas
             className="scene-canvas__webgl"
             camera={{ fov: 45, near: 0.1, far: 100, position: [4.8, 3.8, 4.8] }}
-            dpr={[1, 2]}
+            dpr={profile.dpr}
             fallback={<FallbackPanel />}
-            gl={{ antialias: true, alpha: false }}
+            gl={{ antialias: profile.antialias, alpha: false }}
             shadows
             onPointerMissed={() => store.clearSelection()}
           >

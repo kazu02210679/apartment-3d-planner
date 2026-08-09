@@ -1,4 +1,3 @@
-import { Edges } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { ReactNode } from 'react'
 import type { Group } from 'three'
@@ -7,13 +6,20 @@ import { resolveCatalogInstance } from '../../catalog/catalog'
 import type { GeometryDescriptor } from '../../catalog/types'
 import type { Dimensions, Entity } from '../../domain/schema'
 import {
-  millimetresToRendererLength,
   toRendererDimensions,
   toRendererTransform,
   type RendererTransform,
 } from '../adapters'
 import { resolveRendererMaterial, type RendererMaterial } from '../materials'
+import { Computer } from './Computer'
 import { GenericBox } from './GenericBox'
+import { LDesk } from './LDesk'
+import { Lighting } from './Lighting'
+import { LivingFurniture } from './LivingFurniture'
+import { Monitor } from './Monitor'
+import { MonitorArm } from './MonitorArm'
+import { Printer } from './Printer'
+import { Shelf } from './Shelf'
 
 export interface RenderableEntity {
   readonly entity: Entity
@@ -66,80 +72,59 @@ function outlineFor(state: RenderableEntity['state']): string | undefined {
   return undefined
 }
 
-function PanelWithStand({ renderable }: { readonly renderable: RenderableEntity }) {
-  const { dimensions, geometry, material } = renderable
-  if (geometry.kind !== 'panel-with-stand') return null
-  const total = toRendererDimensions(dimensions)
-  const panelWidth = millimetresToRendererLength(geometry.panel.width)
-  const panelHeight = millimetresToRendererLength(geometry.panel.height)
-  const standHeight = Math.max(0.04, total[1] - panelHeight)
+function DetailedModel({ renderable }: { readonly renderable: RenderableEntity }) {
+  const dimensions = toRendererDimensions(renderable.dimensions)
   const outlineColor = outlineFor(renderable.state)
+  const props = { dimensions, material: renderable.material, outlineColor }
 
-  return (
-    <group>
-      <mesh castShadow receiveShadow position={[0, standHeight / 2, 0]}>
-        <boxGeometry args={[0.05, standHeight, 0.05]} />
-        <meshStandardMaterial {...material} />
-      </mesh>
-      <mesh castShadow receiveShadow position={[0, total[1] / 2 - panelHeight / 2, 0]}>
-        <boxGeometry args={[panelWidth, panelHeight, Math.max(0.025, total[2] * 0.25)]} />
-        <meshStandardMaterial {...material} />
-        {outlineColor ? <Edges color={outlineColor} threshold={15} /> : null}
-      </mesh>
-      <mesh
-        castShadow
-        receiveShadow
-        position={[0, -total[1] / 2 + 0.025, total[2] * 0.1]}
-      >
-        <boxGeometry
-          args={[Math.min(panelWidth * 0.55, 0.45), 0.05, Math.max(0.12, total[2] * 0.8)]}
+  switch (renderable.entity.catalog?.itemId) {
+    case 'desk.l-shaped-sit-stand':
+      return <LDesk {...props} geometry={renderable.geometry} />
+    case 'desk.straight':
+      return <LDesk {...props} />
+    case 'display.monitor':
+      return <Monitor {...props} />
+    case 'display.information':
+      return <Monitor {...props} mode="calendar" />
+    case 'mount.monitor-arm':
+      return <MonitorArm {...props} />
+    case 'light.display':
+      return <Lighting {...props} />
+    case 'light.room':
+      return <Lighting {...props} room />
+    case 'desk.shelf':
+      return <Shelf {...props} />
+    case 'storage.shelf-cabinet':
+      return <Shelf {...props} cabinet />
+    case 'storage.clothes':
+      return <Shelf {...props} cabinet />
+    case 'printer.generic':
+      return <Printer {...props} />
+    case 'computer.windows-tower':
+      return <Computer {...props} kind="tower" />
+    case 'computer.mac':
+      return <Computer {...props} kind="mac" />
+    case 'computer.mini-pc':
+      return <Computer {...props} kind="mini" />
+    case 'seating.chair':
+      return <LivingFurniture {...props} kind="chair" />
+    case 'sleep.bed-futon':
+      return <LivingFurniture {...props} kind="bed" />
+    case 'table.side':
+      return <LivingFurniture {...props} kind="side-table" />
+    case 'waste.trash-bin':
+      return <LivingFurniture {...props} kind="trash" />
+    case 'power.strip':
+      return <LivingFurniture {...props} kind="power-strip" />
+    default:
+      return (
+        <GenericBox
+          dimensions={dimensions}
+          material={renderable.material}
+          outlineColor={outlineColor}
         />
-        <meshStandardMaterial {...material} />
-      </mesh>
-    </group>
-  )
-}
-
-function LDesk({ renderable }: { readonly renderable: RenderableEntity }) {
-  const { dimensions, geometry, material } = renderable
-  if (geometry.kind !== 'l-desk') return null
-  const total = toRendererDimensions(dimensions)
-  const topThickness = 0.06
-  const main = [
-    millimetresToRendererLength(geometry.mainTop.width),
-    topThickness,
-    millimetresToRendererLength(geometry.mainTop.depth),
-  ] as const
-  const returnTop = [
-    millimetresToRendererLength(geometry.returnTop.width),
-    topThickness,
-    millimetresToRendererLength(geometry.returnTop.depth),
-  ] as const
-  const returnDirection = geometry.returnSide === 'left' ? -1 : 1
-  const outlineColor = outlineFor(renderable.state)
-
-  return (
-    <group>
-      <mesh castShadow receiveShadow position={[0, total[1] / 2 - topThickness / 2, 0]}>
-        <boxGeometry args={main} />
-        <meshStandardMaterial {...material} />
-        {outlineColor ? <Edges color={outlineColor} threshold={15} /> : null}
-      </mesh>
-      <mesh
-        castShadow
-        receiveShadow
-        position={[
-          returnDirection * (main[0] / 2 - returnTop[0] / 2),
-          total[1] / 2 - topThickness / 2,
-          main[2] / 2 + returnTop[2] / 2 - 0.05,
-        ]}
-      >
-        <boxGeometry args={returnTop} />
-        <meshStandardMaterial {...material} />
-        {outlineColor ? <Edges color={outlineColor} threshold={15} /> : null}
-      </mesh>
-    </group>
-  )
+      )
+  }
 }
 
 interface EntityRendererProps {
@@ -161,8 +146,6 @@ export function EntityRenderer({
 }: EntityRendererProps) {
   const renderable = resolveRenderableEntity(entity, selected, outOfBounds)
   if (!renderable) return null
-  const dimensions = toRendererDimensions(renderable.dimensions)
-  const outlineColor = outlineFor(renderable.state)
   const select = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation()
     onSelect(entity.id)
@@ -176,17 +159,7 @@ export function EntityRenderer({
       rotation={renderable.transform.rotation}
       onClick={select}
     >
-      {renderable.geometry.kind === 'panel-with-stand' ? (
-        <PanelWithStand renderable={renderable} />
-      ) : renderable.geometry.kind === 'l-desk' ? (
-        <LDesk renderable={renderable} />
-      ) : (
-        <GenericBox
-          dimensions={dimensions}
-          material={renderable.material}
-          outlineColor={outlineColor}
-        />
-      )}
+      <DetailedModel renderable={renderable} />
       {children}
     </group>
   )

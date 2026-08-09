@@ -6,6 +6,8 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 
 import type { SceneDocument } from '../domain/schema'
 import { EntityRenderer } from './entities/EntityRenderer'
+import { PreviewEnvironment } from './PreviewEnvironment'
+import { getRendererProfile } from './quality'
 import { RoomShell } from './RoomShell'
 import type { EditorStore, EditorTool } from '../app/editor-store'
 import { getCatalogDefinition, resolveCatalogInstance } from '../catalog/catalog'
@@ -75,6 +77,7 @@ export function SceneRoot({
   onEntitySelect,
   onEmptyHit,
 }: SceneRootProps) {
+  const profile = getRendererProfile(mode)
   const objects = useRef(new Map<string, Group>())
   const [selectedObject, setSelectedObject] = useState<Group | null>(null)
   const [orbitEnabled, setOrbitEnabled] = useState(true)
@@ -129,7 +132,8 @@ export function SceneRoot({
       onSelect={onEntitySelect}
       onObjectReady={registerObject}
     >
-      {entity.id === selectedId &&
+      {mode === 'edit' &&
+      entity.id === selectedId &&
       activeTool === 'resize' &&
       canResize &&
       selectedObject &&
@@ -148,18 +152,10 @@ export function SceneRoot({
 
   return (
     <>
-      <color attach="background" args={['#0d121d']} />
-      <ambientLight intensity={0.68} />
-      <directionalLight
-        castShadow
-        intensity={1.2}
-        position={[4, 7, 4]}
-        shadow-mapSize={[1024, 1024]}
-      />
-      <directionalLight intensity={0.4} position={[-4, 3, -2]} color="#7fc4ff" />
-      <RoomShell room={scene.room} onEmptyHit={onEmptyHit} />
+      <PreviewEnvironment profile={profile} />
+      <RoomShell room={scene.room} onEmptyHit={onEmptyHit} profile={profile} />
       {childrenOf(null).map(renderEntity)}
-      {selectedId ? (
+      {mode === 'edit' && selectedId ? (
         <TransformGizmo
           entityId={selectedId}
           object={selectedObject}
