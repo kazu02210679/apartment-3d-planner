@@ -1,5 +1,11 @@
 import { Canvas } from '@react-three/fiber'
-import { Component, useState, useSyncExternalStore, type ReactNode } from 'react'
+import {
+  Component,
+  useCallback,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 
 import type { EditorStore } from '../app/editor-store'
 import { FallbackPanel } from './FallbackPanel'
@@ -44,6 +50,8 @@ export function SceneCanvas({
     setCameraIntent('idle')
     queueMicrotask(() => setCameraIntent(intent))
   }
+  const selectEntity = useCallback((id: string) => store.selectEntity(id), [store])
+  const clearSelection = useCallback(() => store.clearSelection(), [store])
   const nudgeSelected = () => {
     const id = snapshot.selectedEntityId
     const entity = id
@@ -129,7 +137,7 @@ export function SceneCanvas({
             fallback={<FallbackPanel />}
             gl={{ antialias: profile.antialias, alpha: false }}
             shadows
-            onPointerMissed={() => store.clearSelection()}
+            onPointerMissed={clearSelection}
           >
             <SceneRoot
               scene={snapshot.scene}
@@ -139,8 +147,8 @@ export function SceneCanvas({
               store={store}
               mode={snapshot.mode}
               activeTool={snapshot.activeTool}
-              onEntitySelect={(id) => store.selectEntity(id)}
-              onEmptyHit={() => store.clearSelection()}
+              onEntitySelect={selectEntity}
+              onEmptyHit={clearSelection}
             />
           </Canvas>
         </RendererErrorBoundary>

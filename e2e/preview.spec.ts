@@ -76,9 +76,7 @@ test('preview visual profiles remain usable at desktop and narrow mobile viewpor
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(viewport.width)
-    const editorImage = await page
-      .locator('canvas')
-      .evaluate((canvas) => canvas.toDataURL())
+    const editorImage = (await page.screenshot()).toString('base64')
     await testInfo.attach(`${viewport.name}-editor`, {
       body: await page.screenshot(),
       contentType: 'image/png',
@@ -89,9 +87,7 @@ test('preview visual profiles remain usable at desktop and narrow mobile viewpor
       'data-renderer-profile',
       'preview',
     )
-    const previewImage = await page
-      .locator('canvas')
-      .evaluate((canvas) => canvas.toDataURL())
+    const previewImage = (await page.screenshot()).toString('base64')
     expect(previewImage).not.toBe(editorImage)
     await testInfo.attach(`${viewport.name}-preview`, {
       body: await page.screenshot(),

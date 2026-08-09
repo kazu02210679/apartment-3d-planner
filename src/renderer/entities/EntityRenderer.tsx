@@ -1,5 +1,5 @@
 import type { ThreeEvent } from '@react-three/fiber'
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import type { Group } from 'three'
 
 import { resolveCatalogInstance } from '../../catalog/catalog'
@@ -141,7 +141,36 @@ interface EntityRendererProps {
   readonly profile?: RendererProfile
 }
 
-export function EntityRenderer({
+function entityRendererEqual(left: EntityRendererProps, right: EntityRendererProps) {
+  const leftEntity = left.entity
+  const rightEntity = right.entity
+  return (
+    leftEntity.id === rightEntity.id &&
+    leftEntity.visible === rightEntity.visible &&
+    leftEntity.locked === rightEntity.locked &&
+    leftEntity.catalog?.itemId === rightEntity.catalog?.itemId &&
+    leftEntity.catalog?.revision === rightEntity.catalog?.revision &&
+    leftEntity.catalog?.presetId === rightEntity.catalog?.presetId &&
+    leftEntity.dimensions.width === rightEntity.dimensions.width &&
+    leftEntity.dimensions.depth === rightEntity.dimensions.depth &&
+    leftEntity.dimensions.height === rightEntity.dimensions.height &&
+    leftEntity.transform.position.x === rightEntity.transform.position.x &&
+    leftEntity.transform.position.y === rightEntity.transform.position.y &&
+    leftEntity.transform.position.z === rightEntity.transform.position.z &&
+    leftEntity.transform.rotation.x === rightEntity.transform.rotation.x &&
+    leftEntity.transform.rotation.y === rightEntity.transform.rotation.y &&
+    leftEntity.transform.rotation.z === rightEntity.transform.rotation.z &&
+    JSON.stringify(leftEntity.overrides) === JSON.stringify(rightEntity.overrides) &&
+    left.selected === right.selected &&
+    left.outOfBounds === right.outOfBounds &&
+    left.onSelect === right.onSelect &&
+    left.onObjectReady === right.onObjectReady &&
+    left.profile === right.profile &&
+    left.children === right.children
+  )
+}
+
+export const EntityRenderer = memo(function EntityRenderer({
   entity,
   selected,
   outOfBounds,
@@ -174,4 +203,4 @@ export function EntityRenderer({
       {children}
     </group>
   )
-}
+}, entityRendererEqual)

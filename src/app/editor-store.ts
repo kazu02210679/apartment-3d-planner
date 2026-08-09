@@ -387,6 +387,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       selectedEntityId: null,
       primarySelectionId: null,
       selectedEntityIds: [],
+      cableDraft: undefined,
       errorMessage: undefined,
     }
     if (save) {
@@ -708,7 +709,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       }
     },
     setMode(mode) {
-      snapshot = { ...snapshot, mode, errorMessage: undefined }
+      snapshot = { ...snapshot, mode, cableDraft: undefined, errorMessage: undefined }
       publish()
     },
     setActiveTool(activeTool) {

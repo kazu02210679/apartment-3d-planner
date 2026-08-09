@@ -111,6 +111,39 @@ describe('EditorStore', () => {
     })
   })
 
+  it('clears transient cable drafts on mode changes and imports without writing them', () => {
+    const idFactory = ids()
+    const autosave = {
+      schedule: vi.fn(),
+      flush: () => ({ state: 'idle' as const }),
+      dispose: () => undefined,
+      getStatus: () => ({ state: 'idle' as const }),
+    }
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+      idFactory,
+      autosave,
+    })
+    const cableId = store.addCatalogItem('cable.generic')!
+    const cable = store
+      .getSnapshot()
+      .scene.entities.find((entity) => entity.id === cableId)!
+    const end = cable.ports.find((port) => port.extensions.catalogPortId === 'end-a')!
+    const exported = store.exportJson()
+    autosave.schedule.mockClear()
+
+    expect(store.beginCableDraft(cableId, end.id)).toBe(true)
+    store.setMode('preview')
+    expect(store.getSnapshot().cableDraft).toBeUndefined()
+    expect(store.exportJson()).toBe(exported)
+    expect(autosave.schedule).not.toHaveBeenCalled()
+
+    store.setMode('edit')
+    expect(store.beginCableDraft(cableId, end.id)).toBe(true)
+    expect(store.importJson(exported)).toBe(true)
+    expect(store.getSnapshot().cableDraft).toBeUndefined()
+  })
+
   it('adds through command history, selects by stable id, and falls back to room after delete', () => {
     const idFactory = ids()
     const store = createEditorStore({

@@ -91,6 +91,8 @@ export function SceneRoot({
   const [orbitEnabled, setOrbitEnabled] = useState(true)
   const controller = useMemo(() => createInteractionController(store), [store])
   const selectedId = selectedEntityIds[0] ?? null
+  const selectedIdRef = useRef(selectedId)
+  selectedIdRef.current = selectedId
   const selectedEntity = selectedId
     ? scene.entities.find((entity) => entity.id === selectedId)
     : undefined
@@ -105,8 +107,16 @@ export function SceneRoot({
       (value) => Number.isFinite(value) && value > 0,
     ) &&
     (!selectedEntity.catalog ||
-      getCatalogDefinition(selectedEntity.catalog.itemId)?.dimensionPolicy.mode !==
-        'fixed'),
+      (() => {
+        try {
+          return (
+            getCatalogDefinition(selectedEntity.catalog.itemId).dimensionPolicy.mode !==
+            'fixed'
+          )
+        } catch {
+          return true
+        }
+      })()),
   )
   const resolvedSelectedDimensions = (() => {
     if (!selectedEntity?.catalog) return selectedEntity?.dimensions
@@ -116,21 +126,25 @@ export function SceneRoot({
       return selectedEntity.dimensions
     }
   })()
-  const registerObject = useCallback(
-    (id: string, object: Group | null) => {
-      if (object) objects.current.set(id, object)
-      else objects.current.delete(id)
-      if (id === selectedId) setSelectedObject(object)
-    },
-    [selectedId],
-  )
+  const registerObject = useCallback((id: string, object: Group | null) => {
+    if (object) objects.current.set(id, object)
+    else objects.current.delete(id)
+    if (id === selectedIdRef.current) setSelectedObject(object)
+  }, [])
   useEffect(
     () =>
       setSelectedObject(selectedId ? (objects.current.get(selectedId) ?? null) : null),
     [selectedId],
   )
-  const childrenOf = (parentId: string | null) =>
-    scene.entities.filter((entity) => entity.parentId === parentId)
+  const childrenByParent = useMemo(() => {
+    const result = new Map<string | null, SceneDocument['entities']>()
+    for (const entity of scene.entities) {
+      const children = result.get(entity.parentId)
+      if (children) children.push(entity)
+      else result.set(entity.parentId, [entity])
+    }
+    return result
+  }, [scene.entities])
   const cables = scene.entities.filter(
     (entity) => entity.catalog?.itemId === 'cable.generic' && entity.visible,
   )
@@ -139,17 +153,10 @@ export function SceneRoot({
     if (draft) store.completeCableDraft(entityId, portId)
     else store.beginCableDraft(entityId, portId)
   }
-  const renderEntity = (entity: SceneDocument['entities'][number]) => (
-    <EntityRenderer
-      key={entity.id}
-      entity={entity}
-      selected={selectedEntityIds.includes(entity.id)}
-      outOfBounds={outOfBoundsEntityIds.includes(entity.id)}
-      onSelect={onEntitySelect}
-      onObjectReady={registerObject}
-      profile={profile}
-    >
-      {mode === 'edit' &&
+  const renderEntity = (entity: SceneDocument['entities'][number]) => {
+    const children = childrenByParent.get(entity.id)
+    const resizeHandle =
+      mode === 'edit' &&
       entity.id === selectedId &&
       activeTool === 'resize' &&
       canResize &&
@@ -162,16 +169,36 @@ export function SceneRoot({
           enabled={mode === 'edit' && canDirectManipulate}
           controller={controller}
         />
-      ) : null}
-      {childrenOf(entity.id).map(renderEntity)}
-    </EntityRenderer>
-  )
+      ) : undefined
+    const childNodes = children?.length ? children.map(renderEntity) : undefined
+    const content = resizeHandle ? (
+      <>
+        {resizeHandle}
+        {childNodes}
+      </>
+    ) : (
+      childNodes
+    )
+    return (
+      <EntityRenderer
+        key={entity.id}
+        entity={entity}
+        selected={selectedEntityIds.includes(entity.id)}
+        outOfBounds={outOfBoundsEntityIds.includes(entity.id)}
+        onSelect={onEntitySelect}
+        onObjectReady={registerObject}
+        profile={profile}
+      >
+        {content}
+      </EntityRenderer>
+    )
+  }
 
   return (
     <>
       <PreviewEnvironment profile={profile} />
       <RoomShell room={scene.room} onEmptyHit={onEmptyHit} profile={profile} />
-      {childrenOf(null).map(renderEntity)}
+      {childrenByParent.get(null)?.map(renderEntity)}
       {cables.map((cable) => {
         try {
           const routing = getCableRouting(cable)

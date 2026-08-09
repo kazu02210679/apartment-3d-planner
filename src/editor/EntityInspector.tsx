@@ -41,7 +41,13 @@ export function EntityInspector({ store }: { store: EditorStore }) {
   if (!entity) return null
   const locked = entity.locked
   const definition = entity.catalog
-    ? getCatalogDefinition(entity.catalog.itemId)
+    ? (() => {
+        try {
+          return getCatalogDefinition(entity.catalog.itemId)
+        } catch {
+          return undefined
+        }
+      })()
     : undefined
   const resolved = entity.catalog
     ? (() => {

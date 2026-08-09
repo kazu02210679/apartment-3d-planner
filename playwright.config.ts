@@ -3,7 +3,10 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   outputDir: 'node_modules/.cache/playwright/test-results',
-  fullyParallel: true,
+  // The fixed 100-object acceptance benchmark must run without competing
+  // Chromium render processes so its page-side timing remains reproducible.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: 'line',

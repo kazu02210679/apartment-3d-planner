@@ -15,11 +15,11 @@ function createStore() {
 }
 
 describe('EditorShell', () => {
-  it('uses only the real canvas surface instead of legacy stage controls and entities', () => {
+  it('uses only the real canvas surface instead of legacy stage controls and entities', async () => {
     const store = createEditorStore()
     const { container } = render(<EditorShell store={store} />)
 
-    expect(screen.getByTestId('scene-canvas')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('scene-canvas')).toBeInTheDocument())
     expect(container.querySelector('.canvas-grid')).not.toBeInTheDocument()
     expect(container.querySelector('.stage-room')).not.toBeInTheDocument()
     expect(container.querySelector('.stage-entities')).not.toBeInTheDocument()
@@ -122,6 +122,32 @@ describe('EditorShell', () => {
       within(sheet).getByRole('complementary', { name: 'プロパティパネル' }),
     ).toBeInTheDocument()
     expect(within(sheet).getByRole('heading', { name: '部屋' })).toBeInTheDocument()
+  })
+
+  it('moves focus into a mobile dialog, closes it on Escape, and restores its exact opener', () => {
+    const store = createStore()
+    render(<EditorShell store={store} />)
+
+    const opener = screen
+      .getAllByRole('button', { name: /.+/ })
+      .find((button) => button.textContent?.includes('プロパティ'))!
+    opener.focus()
+    fireEvent.click(opener)
+
+    const sheet = screen.getByTestId('mobile-sheet')
+    const close = sheet.querySelector<HTMLButtonElement>('.sheet-heading button')!
+    expect(sheet).toHaveAttribute('aria-modal', 'true')
+    expect(opener).toHaveAttribute('aria-expanded', 'true')
+    expect(opener).toHaveAttribute('aria-controls', 'mobile-sheet')
+    expect(close).toHaveFocus()
+
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true })
+    expect(sheet).toContainElement(document.activeElement as HTMLElement)
+    expect(document.activeElement).not.toBe(close)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('mobile-sheet')).not.toBeInTheDocument()
+    expect(opener).toHaveFocus()
   })
 
   it('supports additive outliner selection, grouping, mobile sheets, and import errors through DOM semantics', async () => {

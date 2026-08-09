@@ -8,13 +8,20 @@ function useSnapshot(store: EditorStore) {
 
 export function Outliner({ store }: { store: EditorStore }) {
   const snapshot = useSnapshot(store)
-  const children = (parentId: string | null) =>
-    snapshot.scene.entities.filter((entity) => entity.parentId === parentId)
+  const scene = snapshot.scene
+  const selectedIds = snapshot.selectedEntityIds
+  const entityById = new Map(scene.entities.map((entity) => [entity.id, entity]))
+  const childrenByParent = new Map<string | null, typeof scene.entities>()
+  for (const entity of scene.entities) {
+    const children = childrenByParent.get(entity.parentId)
+    if (children) children.push(entity)
+    else childrenByParent.set(entity.parentId, [entity])
+  }
 
   const renderEntity = (entityId: string, level: number): React.ReactNode => {
-    const entity = snapshot.scene.entities.find((candidate) => candidate.id === entityId)
+    const entity = entityById.get(entityId)
     if (!entity) return null
-    const selected = snapshot.selectedEntityIds.includes(entity.id)
+    const selected = selectedIds.includes(entity.id)
     return (
       <div className="outliner-node" key={entity.id}>
         <button
@@ -44,7 +51,9 @@ export function Outliner({ store }: { store: EditorStore }) {
             {entity.locked ? '🔒' : ''}
           </span>
         </button>
-        {children(entity.id).map((child) => renderEntity(child.id, level + 1))}
+        {childrenByParent
+          .get(entity.id)
+          ?.map((child) => renderEntity(child.id, level + 1))}
       </div>
     )
   }
@@ -56,7 +65,7 @@ export function Outliner({ store }: { store: EditorStore }) {
           <p className="eyebrow">OUTLINER</p>
           <h2>アウトライナー</h2>
         </div>
-        <span className="panel-count">{snapshot.scene.entities.length}</span>
+        <span className="panel-count">{scene.entities.length}</span>
       </div>
       <button
         className={`outliner-row room-row ${snapshot.selectedEntityId === null ? 'is-selected' : ''}`}
@@ -69,12 +78,12 @@ export function Outliner({ store }: { store: EditorStore }) {
           ⌂
         </span>
         <span className="outliner-copy">
-          <strong title={snapshot.scene.room.name}>{snapshot.scene.room.name}</strong>
-          <small>{snapshot.scene.room.id}</small>
+          <strong title={scene.room.name}>{scene.room.name}</strong>
+          <small>{scene.room.id}</small>
         </span>
       </button>
       <div className="outliner-tree">
-        {children(null).map((entity) => renderEntity(entity.id, 0))}
+        {childrenByParent.get(null)?.map((entity) => renderEntity(entity.id, 0))}
       </div>
       <p className="panel-note">階層とIDは3D選択と同期します。</p>
     </section>
