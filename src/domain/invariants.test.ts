@@ -175,6 +175,34 @@ describe('SceneDocument graph invariants', () => {
     expect(() => validateSceneInvariants(scene)).toThrow('incompatible-cable-attachment')
   })
 
+  it('rejects cable self-links and cable entity targets at the import invariant boundary', () => {
+    const cable = makeEntity('cable', { x: 0, y: 500, z: 0 })
+    cable.catalog = { itemId: 'cable.generic', revision: '1', extensions: {} }
+    cable.ports = [
+      { id: 'end-a', name: 'A', kind: 'power', extensions: { catalogPortId: 'end-a' } },
+      { id: 'end-b', name: 'B', kind: 'power', extensions: { catalogPortId: 'end-b' } },
+      { id: 'cable-jack', name: 'J', kind: 'power', extensions: {} },
+    ]
+    const scene = makeScene()
+    scene.entities.push(cable)
+    scene.connections.push({
+      id: 'self-link',
+      endpoints: [
+        { entityId: 'cable', portId: 'end-a' },
+        { entityId: 'cable', portId: 'end-b' },
+      ],
+      properties: {},
+      extensions: {},
+    })
+    expect(() => validateSceneInvariants(scene)).toThrow('invalid-cable-attachment')
+
+    scene.connections[0]!.endpoints = [
+      { entityId: 'cable', portId: 'end-a' },
+      { entityId: 'cable', portId: 'cable-jack' },
+    ]
+    expect(() => validateSceneInvariants(scene)).toThrow('invalid-cable-attachment')
+  })
+
   it('normalizes equivalent documents deterministically without adding renderer state', () => {
     const scene = makeScene()
     scene.entities.push(makeEntity('entity-b', { x: 200, y: 500, z: 0 }))

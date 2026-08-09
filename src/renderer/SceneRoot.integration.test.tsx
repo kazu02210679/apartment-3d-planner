@@ -1,11 +1,14 @@
 import { create } from '@react-three/test-renderer'
+import { act } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@react-three/drei', () => ({
   Edges: ({ color }: { readonly color: string }) => (
     <lineSegments name={`outline-${color}`} />
   ),
-  OrbitControls: () => <group name="orbit-controls" />,
+  OrbitControls: ({ enabled }: { readonly enabled: boolean }) => (
+    <group name="orbit-controls" userData={{ orbitEnabled: enabled }} />
+  ),
   TransformControls: () => <group name="transform-gizmo" />,
 }))
 vi.mock('./controls/ResizeHandles', () => ({
@@ -17,17 +20,19 @@ vi.mock('./controls/TransformGizmo', () => ({
 
 import { createEditorStore } from '../app/editor-store'
 import { createEmptyScene } from '../domain/scene'
+import type { AutosaveCoordinator } from '../persistence/autosave'
 import { SceneRoot } from './SceneRoot'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-function createStore() {
+function createStore(autosave?: AutosaveCoordinator) {
   let nextId = 0
   return createEditorStore({
     initialScene: createEmptyScene('6-tatami', {
       idFactory: () => `scene-id-${++nextId}`,
       now: () => '2026-01-01T00:00:00.000Z',
     }),
+    autosave,
   })
 }
 
@@ -89,7 +94,13 @@ describe('SceneRoot renderer integration', () => {
   })
 
   it('commits a direct waypoint drag as one cable-routing interaction', async () => {
-    const store = createStore()
+    const autosave = {
+      schedule: vi.fn(),
+      flush: vi.fn(() => ({ state: 'idle' as const })),
+      dispose: vi.fn(),
+      getStatus: () => ({ state: 'idle' as const }),
+    } satisfies AutosaveCoordinator
+    const store = createStore(autosave)
     const cableId = store.addCatalogItem('cable.generic')!
     store.addCableWaypoint(cableId)
     store.setActiveTool('cable')
@@ -101,17 +112,32 @@ describe('SceneRoot renderer integration', () => {
     const handle = renderer.scene.findByProps({
       name: `cable-waypoint-${cableId}-${waypoint.id}`,
     })
-    const target = { setPointerCapture: vi.fn() }
+    const target = { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() }
     const event = (x: number) => ({
       stopPropagation: vi.fn(),
       pointerId: 1,
       target,
       unprojectedPoint: { x, y: 0, z: 0 },
     })
+    autosave.schedule.mockClear()
 
-    await handle.props.onPointerDown(event(0))
-    await handle.props.onPointerMove(event(0.2))
-    await handle.props.onPointerUp(event(0.2))
+    await act(async () => {
+      await handle.props.onPointerDown(event(0))
+    })
+    await renderer.update(<SceneRoot {...rootProps(store)} />)
+    expect(
+      renderer.scene.findByProps({ name: 'orbit-controls' }).props.userData.orbitEnabled,
+    ).toBe(false)
+    await act(async () => {
+      await handle.props.onPointerMove(event(0.2))
+      await handle.props.onPointerUp(event(0.2))
+    })
+    await renderer.update(<SceneRoot {...rootProps(store)} />)
+    expect(target.releasePointerCapture).toHaveBeenCalledWith(1)
+    expect(
+      renderer.scene.findByProps({ name: 'orbit-controls' }).props.userData.orbitEnabled,
+    ).toBe(true)
+    expect(autosave.schedule).toHaveBeenCalledTimes(1)
 
     const moved = store
       .getSnapshot()
@@ -124,6 +150,137 @@ describe('SceneRoot renderer integration', () => {
       ).waypoints[0]!.position.x,
     ).toBe(200)
     expect(store.undo()).toBe(true)
+  })
+
+  it('cancels a waypoint pointer gesture without autosaving and restores orbit', async () => {
+    const autosave = {
+      schedule: vi.fn(),
+      flush: vi.fn(() => ({ state: 'idle' as const })),
+      dispose: vi.fn(),
+      getStatus: () => ({ state: 'idle' as const }),
+    } satisfies AutosaveCoordinator
+    const store = createStore(autosave)
+    const cableId = store.addCatalogItem('cable.generic')!
+    store.addCableWaypoint(cableId)
+    store.setActiveTool('cable')
+    const waypoint = (
+      store.getSnapshot().scene.entities.find((entity) => entity.id === cableId)!
+        .properties.routing as unknown as { waypoints: readonly { id: string }[] }
+    ).waypoints[0]!
+    const renderer = await create(<SceneRoot {...rootProps(store)} />)
+    const handle = renderer.scene.findByProps({
+      name: `cable-waypoint-${cableId}-${waypoint.id}`,
+    })
+    const target = { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() }
+    const event = (x: number) => ({
+      stopPropagation: vi.fn(),
+      pointerId: 9,
+      target,
+      unprojectedPoint: { x, y: 0, z: 0 },
+    })
+    autosave.schedule.mockClear()
+
+    await act(async () => {
+      await handle.props.onPointerDown(event(0))
+      await handle.props.onPointerMove(event(0.2))
+      await handle.props.onPointerCancel(event(0.2))
+    })
+    await renderer.update(<SceneRoot {...rootProps(store)} />)
+
+    const routing = store
+      .getSnapshot()
+      .scene.entities.find((entity) => entity.id === cableId)!.properties
+      .routing as unknown as { waypoints: readonly { position: { x: number } }[] }
+    expect(routing.waypoints[0]!.position.x).toBe(0)
+    expect(target.releasePointerCapture).toHaveBeenCalledWith(9)
+    expect(
+      renderer.scene.findByProps({ name: 'orbit-controls' }).props.userData.orbitEnabled,
+    ).toBe(true)
+    expect(autosave.schedule).not.toHaveBeenCalled()
+  })
+
+  it('cancels an active waypoint drag on Escape, mode switch, and root unmount', async () => {
+    const autosave = {
+      schedule: vi.fn(),
+      flush: vi.fn(() => ({ state: 'idle' as const })),
+      dispose: vi.fn(),
+      getStatus: () => ({ state: 'idle' as const }),
+    } satisfies AutosaveCoordinator
+    const store = createStore(autosave)
+    const cableId = store.addCatalogItem('cable.generic')!
+    store.addCableWaypoint(cableId)
+    store.setActiveTool('cable')
+    const waypoint = (
+      store.getSnapshot().scene.entities.find((entity) => entity.id === cableId)!
+        .properties.routing as unknown as { waypoints: readonly { id: string }[] }
+    ).waypoints[0]!
+    const renderer = await create(<SceneRoot {...rootProps(store)} />)
+    const handle = renderer.scene.findByProps({
+      name: `cable-waypoint-${cableId}-${waypoint.id}`,
+    })
+    const target = { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() }
+    const event = (x: number) => ({
+      stopPropagation: vi.fn(),
+      pointerId: 5,
+      target,
+      unprojectedPoint: { x, y: 0, z: 0 },
+    })
+    autosave.schedule.mockClear()
+
+    await act(async () => {
+      await handle.props.onPointerDown(event(0))
+      await handle.props.onPointerMove(event(0.2))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+    expect(target.releasePointerCapture).toHaveBeenCalledWith(5)
+    expect(autosave.schedule).not.toHaveBeenCalled()
+    expect(
+      store.getSnapshot().scene.entities.find((entity) => entity.id === cableId)!
+        .properties.routing,
+    ).toMatchObject({
+      waypoints: [{ id: waypoint.id, position: { x: 0, y: 0, z: 0 } }],
+    })
+
+    const resetHandle = renderer.scene.findByProps({
+      name: `cable-waypoint-${cableId}-${waypoint.id}`,
+    })
+    await act(async () => {
+      await resetHandle.props.onPointerDown(event(0))
+      await resetHandle.props.onPointerMove(event(0.2))
+    })
+    store.setMode('preview')
+    await act(async () => {
+      await renderer.update(<SceneRoot {...rootProps(store)} />)
+    })
+    expect(target.releasePointerCapture).toHaveBeenCalledTimes(2)
+    expect(autosave.schedule).not.toHaveBeenCalled()
+    expect(
+      store.getSnapshot().scene.entities.find((entity) => entity.id === cableId)!
+        .properties.routing,
+    ).toMatchObject({
+      waypoints: [{ id: waypoint.id, position: { x: 0, y: 0, z: 0 } }],
+    })
+
+    store.setMode('edit')
+    await act(async () => {
+      await renderer.update(<SceneRoot {...rootProps(store)} />)
+    })
+    const finalHandle = renderer.scene.findByProps({
+      name: `cable-waypoint-${cableId}-${waypoint.id}`,
+    })
+    await act(async () => {
+      await finalHandle.props.onPointerDown(event(0))
+      await finalHandle.props.onPointerMove(event(0.2))
+      await renderer.unmount()
+    })
+    expect(target.releasePointerCapture).toHaveBeenCalledTimes(3)
+    expect(autosave.schedule).not.toHaveBeenCalled()
+    expect(
+      store.getSnapshot().scene.entities.find((entity) => entity.id === cableId)!
+        .properties.routing,
+    ).toMatchObject({
+      waypoints: [{ id: waypoint.id, position: { x: 0, y: 0, z: 0 } }],
+    })
   })
 
   it('renders selected editor controls and detailed model state styling while omitting hidden entities', async () => {

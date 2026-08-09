@@ -20,6 +20,33 @@ function replaceEntity(scene: SceneDocument, entity: Entity): void {
   const index = scene.entities.findIndex((candidate) => candidate.id === entity.id)
   scene.entities[index] = entity
 }
+function reconcileCablePortPositions(
+  entity: Entity,
+  dimensions: Entity['dimensions'],
+): Entity {
+  if (entity.catalog?.itemId !== 'cable.generic') return { ...entity, dimensions }
+  const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value))
+  return {
+    ...entity,
+    dimensions,
+    ports: entity.ports.map((port) => {
+      if (
+        port.extensions.catalogPortId !== 'end-a' &&
+        port.extensions.catalogPortId !== 'end-b'
+      )
+        return port
+      const position = port.position ?? { x: 0, y: 0, z: 0 }
+      return {
+        ...port,
+        position: {
+          x: clamp(position.x, dimensions.width / 2),
+          y: clamp(position.y, dimensions.height / 2),
+          z: clamp(position.z, dimensions.depth / 2),
+        },
+      }
+    }),
+  }
+}
 function descendants(scene: SceneDocument, rootId: string): Entity[] {
   const ids = new Set([rootId])
   let found = true
@@ -126,10 +153,13 @@ export function applyCommand(
       })
       break
     case 'set-dimensions':
-      replaceEntity(scene, {
-        ...writable(scene, command.entityId),
-        dimensions: structuredClone(command.dimensions),
-      })
+      replaceEntity(
+        scene,
+        reconcileCablePortPositions(
+          writable(scene, command.entityId),
+          structuredClone(command.dimensions),
+        ),
+      )
       break
     case 'set-catalog': {
       const target = writable(scene, command.entityId)
@@ -153,7 +183,7 @@ export function applyCommand(
         overrides: command.overrides ?? target.overrides,
       }
       const resolved = resolveCatalogInstance(candidate)
-      replaceEntity(scene, { ...candidate, dimensions: resolved.dimensions })
+      replaceEntity(scene, reconcileCablePortPositions(candidate, resolved.dimensions))
       break
     }
     case 'resize-room':
@@ -282,6 +312,12 @@ export function applyCommand(
         port.extensions.catalogPortId !== 'end-b'
       )
         throw new Error('Only cable end ports can be repositioned.')
+      if (
+        Math.abs(command.position.x) > cable.dimensions.width / 2 ||
+        Math.abs(command.position.y) > cable.dimensions.height / 2 ||
+        Math.abs(command.position.z) > cable.dimensions.depth / 2
+      )
+        throw new Error('Cable end position must stay inside the cable dimensions.')
       replaceEntity(scene, {
         ...cable,
         ports: cable.ports.map((candidate) =>

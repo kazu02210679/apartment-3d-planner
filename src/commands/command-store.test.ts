@@ -78,16 +78,44 @@ describe('CommandStore', () => {
       type: 'set-cable-port-position',
       entityId: 'cable',
       portId: 'generated-2',
-      position: { x: -200, y: 25, z: 10 },
+      position: { x: -200, y: 5, z: 10 },
     })
 
     const cable = store.scene.entities.find((candidate) => candidate.id === 'cable')!
     expect(cable.properties.routing).toMatchObject({ kind: 'display', diameterMm: 6 })
     expect(cable.ports.find((port) => port.id === 'generated-2')?.position).toEqual({
       x: -200,
-      y: 25,
+      y: 5,
       z: 10,
     })
+  })
+
+  it('reconciles cable-end anchors into every resized cable envelope', () => {
+    const store = createCommandStore(scene(), { idFactory: ids() })
+    store.execute({ type: 'add-catalog-entity', itemId: 'cable.generic', id: 'cable' })
+    store.execute({
+      type: 'set-dimensions',
+      entityId: 'cable',
+      dimensions: { width: 100, depth: 10, height: 10 },
+    })
+    store.execute({
+      type: 'set-catalog',
+      entityId: 'cable',
+      catalog: { itemId: 'cable.generic', revision: '1', extensions: {} },
+      overrides: { dimensions: { width: 100, depth: 10, height: 10 } },
+    })
+    const cable = store.scene.entities.find((entity) => entity.id === 'cable')!
+    for (const port of cable.ports) {
+      expect(Math.abs(port.position?.x ?? 0)).toBeLessThanOrEqual(
+        cable.dimensions.width / 2,
+      )
+      expect(Math.abs(port.position?.y ?? 0)).toBeLessThanOrEqual(
+        cable.dimensions.height / 2,
+      )
+      expect(Math.abs(port.position?.z ?? 0)).toBeLessThanOrEqual(
+        cable.dimensions.depth / 2,
+      )
+    }
   })
 
   it('rejects catalog transitions into or out of cable.generic', () => {

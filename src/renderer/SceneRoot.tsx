@@ -217,6 +217,7 @@ export function SceneRoot({
               key={`waypoint-handles-${cable.id}`}
               cable={cable}
               store={store}
+              onOrbitEnabledChange={setOrbitEnabled}
             />
           ))
         : null}

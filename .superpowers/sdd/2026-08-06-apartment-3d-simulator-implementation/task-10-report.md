@@ -27,6 +27,29 @@
 - Existing `preview.spec.ts` and `editor-sync.spec.ts` also passed. The R3F
   pointer-lifecycle test covers direct on-canvas waypoint dragging and one undo.
 
+## Correction round 1
+
+- Cable ends in legacy nets now have an explicit Japanese read-only status in the
+  inspector; only a canonical pairwise attachment exposes an enabled detach
+  action.
+- A waypoint pointer interaction disables orbit only after the store accepts its
+  start. Pointer up commits one history/autosave entry; pointer cancel, Escape,
+  cable-mode removal, and root unmount cancel it, restore the original waypoint,
+  release pointer capture, and re-enable orbit.
+- Invariants/import now reject every connection involving a cable endpoint that
+  targets a cable entity, including `end-a` to `end-b` self-links and a cable end
+  to a non-end cable port. Legacy multi-target nets with one cable end and only
+  non-cable targets remain accepted as read-only data.
+- On direct or catalog-resolved cable resizing, the stored local `end-a`/`end-b`
+  anchor coordinates are clamped independently to the new resolved half-extents.
+  Existing free-end edits therefore remain unchanged whenever already in bounds;
+  new out-of-bounds free-end edits are rejected. This keeps arbitrary cable
+  lengths possible while ensuring anchors never escape the entity envelope.
+- Focused correction evidence: 54 tests in 6 files passed, covering invariant and
+  import rejection, store rejection, canonical/legacy inspector controls,
+  direct/catalog-resolved 100 mm bounds, and R3F success/cancel/Escape/mode
+  switch/unmount pointer lifecycles.
+
 ## Residual risks
 
 - The existing React Three test renderer emits known multiple-Three/Clock and

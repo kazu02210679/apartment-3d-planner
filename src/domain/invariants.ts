@@ -12,6 +12,7 @@ export type SceneInvariantCode =
   | 'routing-on-noncable'
   | 'duplicate-cable-attachment'
   | 'duplicate-endpoint-pair'
+  | 'invalid-cable-attachment'
   | 'incompatible-cable-attachment'
 
 export interface SceneInvariantIssue {
@@ -96,9 +97,24 @@ export function collectSceneInvariantIssues(scene: SceneDocument): SceneInvarian
   const canonicalPairs = new Set<string>()
   scene.connections.forEach((connection, connectionIndex) => {
     const classification = classifyCableConnection(scene, connection)
+    const cableEntityEndpoints = connection.endpoints.filter(
+      (endpoint) =>
+        entityById.get(endpoint.entityId)?.catalog?.itemId === 'cable.generic',
+    )
     const cableEndpoints = connection.endpoints.filter((endpoint) =>
       isCableEnd(scene, endpoint),
     )
+    if (
+      cableEntityEndpoints.length > 0 &&
+      (cableEntityEndpoints.length !== cableEndpoints.length ||
+        cableEntityEndpoints.length > 1)
+    ) {
+      issues.push({
+        code: 'invalid-cable-attachment',
+        path: `connections[${connectionIndex}].endpoints`,
+        message: 'A cable end may only connect to a non-cable target.',
+      })
+    }
     for (const cableEndpoint of cableEndpoints) {
       const key = `${cableEndpoint.entityId}/${cableEndpoint.portId}`
       if (occupiedCableEnds.has(key)) {

@@ -1,7 +1,11 @@
 import { useSyncExternalStore } from 'react'
 
 import type { EditorStore } from '../app/editor-store'
-import { getCableEndAttachment, getCableRouting } from '../domain/connections'
+import {
+  classifyCableConnection,
+  getCableEndAttachment,
+  getCableRouting,
+} from '../domain/connections'
 import type { Entity } from '../domain/schema'
 import { NumericField } from './RoomInspector'
 
@@ -59,11 +63,23 @@ export function CableInspector({
       </label>
       {ends.map((end) => {
         const connection = getCableEndAttachment(snapshot.scene, entity.id, end.id)
+        const legacy =
+          connection && classifyCableConnection(snapshot.scene, connection) === 'legacy'
         return (
           <div key={end.id} className="cable-end">
             <strong>{end.name}</strong>
-            <span>{connection ? '接続済み' : '未接続'}</span>
-            {connection ? (
+            <span>
+              {connection
+                ? legacy
+                  ? 'レガシー接続（読み取り専用）'
+                  : '接続済み'
+                : '未接続'}
+            </span>
+            {legacy ? (
+              <p className="warning-box">
+                レガシー接続は読み取り専用で、取り外しや再配線はできません。
+              </p>
+            ) : connection ? (
               <button
                 type="button"
                 data-testid={`cable-end-${end.extensions.catalogPortId}-detach`}

@@ -81,6 +81,36 @@ describe('EditorStore', () => {
     expect(store.getSnapshot().scene.connections).toHaveLength(0)
   })
 
+  it('rejects cable-to-cable targets through the editor facade without committing a connection', () => {
+    const idFactory = ids()
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+      idFactory,
+    })
+    const sourceId = store.addCatalogItem('cable.generic')!
+    const targetId = store.addCatalogItem('cable.generic')!
+    const source = store
+      .getSnapshot()
+      .scene.entities.find((entity) => entity.id === sourceId)!
+    const target = store
+      .getSnapshot()
+      .scene.entities.find((entity) => entity.id === targetId)!
+    const sourceEnd = source.ports.find(
+      (port) => port.extensions.catalogPortId === 'end-a',
+    )!
+    const targetEnd = target.ports.find(
+      (port) => port.extensions.catalogPortId === 'end-b',
+    )!
+
+    expect(store.beginCableDraft(sourceId, sourceEnd.id)).toBe(true)
+    expect(store.completeCableDraft(targetId, targetEnd.id)).toBe(false)
+    expect(store.getSnapshot().scene.connections).toHaveLength(0)
+    expect(store.getSnapshot().cableDraft).toEqual({
+      cableId: sourceId,
+      portId: sourceEnd.id,
+    })
+  })
+
   it('adds through command history, selects by stable id, and falls back to room after delete', () => {
     const idFactory = ids()
     const store = createEditorStore({

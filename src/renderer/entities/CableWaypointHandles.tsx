@@ -1,5 +1,5 @@
 import type { ThreeEvent } from '@react-three/fiber'
-import { useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 import type { EditorStore } from '../../app/editor-store'
 import {
@@ -12,11 +12,42 @@ import type { Entity, Vector3 } from '../../domain/schema'
 export function CableWaypointHandles({
   cable,
   store,
+  onOrbitEnabledChange,
 }: {
   readonly cable: Entity
   readonly store: EditorStore
+  readonly onOrbitEnabledChange: (enabled: boolean) => void
 }) {
-  const active = useRef<string | undefined>(undefined)
+  const active = useRef<
+    | {
+        readonly waypointId: string
+        readonly target: { releasePointerCapture?(pointerId: number): void }
+        readonly pointerId: number
+      }
+    | undefined
+  >(undefined)
+  const clear = useCallback(
+    (commit: boolean) => {
+      const gesture = active.current
+      if (!gesture) return
+      if (commit) store.commitInteraction()
+      else store.cancelInteraction()
+      gesture.target.releasePointerCapture?.(gesture.pointerId)
+      active.current = undefined
+      onOrbitEnabledChange(true)
+    },
+    [onOrbitEnabledChange, store],
+  )
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') clear(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      clear(false)
+    }
+  }, [clear])
   if (cable.locked || !cable.visible || cable.catalog?.itemId !== 'cable.generic')
     return null
   const routing = cable.properties.routing as
@@ -54,14 +85,21 @@ export function CableWaypointHandles({
             onPointerDown={(event) => {
               event.stopPropagation()
               if (store.beginCableWaypointInteraction(cable.id, waypoint.id)) {
-                active.current = waypoint.id
-                ;(
-                  event.target as unknown as { setPointerCapture(id: number): void }
-                ).setPointerCapture(event.pointerId)
+                const target = event.target as unknown as {
+                  setPointerCapture(id: number): void
+                  releasePointerCapture?(id: number): void
+                }
+                target.setPointerCapture(event.pointerId)
+                active.current = {
+                  waypointId: waypoint.id,
+                  target,
+                  pointerId: event.pointerId,
+                }
+                onOrbitEnabledChange(false)
               }
             }}
             onPointerMove={(event) => {
-              if (active.current === waypoint.id) {
+              if (active.current?.waypointId === waypoint.id) {
                 event.stopPropagation()
                 store.updateCableWaypointInteraction(
                   cable.id,
@@ -71,17 +109,15 @@ export function CableWaypointHandles({
               }
             }}
             onPointerUp={(event) => {
-              if (active.current === waypoint.id) {
+              if (active.current?.waypointId === waypoint.id) {
                 event.stopPropagation()
-                store.commitInteraction()
-                active.current = undefined
+                clear(true)
               }
             }}
             onPointerCancel={(event) => {
-              if (active.current === waypoint.id) {
+              if (active.current?.waypointId === waypoint.id) {
                 event.stopPropagation()
-                store.cancelInteraction()
-                active.current = undefined
+                clear(false)
               }
             }}
           >

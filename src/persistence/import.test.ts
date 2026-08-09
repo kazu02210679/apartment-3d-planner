@@ -166,6 +166,48 @@ describe('bounded scene import and migration', () => {
     expectImportFailure(new Uint8Array([0xc3, 0x28]), 'invalid-utf8')
   })
 
+  it('rejects imported cable self-links and cable-target attachments', () => {
+    const base = createFutureWorkstationScene({
+      idFactory: (() => {
+        let index = 0
+        return () => `invalid-cable-${++index}`
+      })(),
+      now: () => '2026-08-06T00:00:00.000Z',
+    })
+    const cable = base.entities.find((entity) => entity.name === 'Power cable')!
+    const endA = cable.ports.find((port) => port.extensions.catalogPortId === 'end-a')!
+    const endB = cable.ports.find((port) => port.extensions.catalogPortId === 'end-b')!
+    const firstAttachment = base.connections.find((connection) =>
+      connection.endpoints.some((endpoint) => endpoint.portId === endA.id),
+    )!
+
+    const selfLink = structuredClone(base)
+    selfLink.connections.find(
+      (connection) => connection.id === firstAttachment.id,
+    )!.endpoints = [
+      { entityId: cable.id, portId: endA.id },
+      { entityId: cable.id, portId: endB.id },
+    ]
+    expectImportFailure(JSON.stringify(selfLink), 'invariant-invalid')
+
+    const cableTarget = structuredClone(base)
+    cableTarget.entities
+      .find((entity) => entity.id === cable.id)!
+      .ports.push({
+        id: 'cable-non-end',
+        name: 'Cable auxiliary port',
+        kind: 'power',
+        extensions: {},
+      })
+    cableTarget.connections.find(
+      (connection) => connection.id === firstAttachment.id,
+    )!.endpoints = [
+      { entityId: cable.id, portId: endA.id },
+      { entityId: cable.id, portId: 'cable-non-end' },
+    ]
+    expectImportFailure(JSON.stringify(cableTarget), 'invariant-invalid')
+  })
+
   it('accepts exact resource boundaries and rejects one-above with limit errors', () => {
     const exactEntities = makeEntityScene(MAX_ENTITIES)
     expect(importScene(JSON.stringify(exactEntities)).ok).toBe(true)
