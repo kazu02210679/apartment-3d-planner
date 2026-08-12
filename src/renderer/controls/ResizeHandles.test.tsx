@@ -1,9 +1,17 @@
 import { create } from '@react-three/test-renderer'
 import { describe, expect, it, vi } from 'vitest'
-import type { Object3D } from 'three'
+import {
+  BoxGeometry,
+  Mesh,
+  Raycaster,
+  Vector3,
+  type Intersection,
+  type Object3D,
+} from 'three'
 
 import type { InteractionController } from './interaction-controller'
 import { ResizeHandles } from './ResizeHandles'
+import { raycastHandleFirst } from './handle-raycast'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -25,6 +33,58 @@ const identityObject = {
 } as unknown as Object3D
 
 describe('ResizeHandles', () => {
+  it('preserves existing intersections and rewrites only an actual handle hit', () => {
+    const handle = new Mesh(new BoxGeometry(0.045, 0.045, 0.045))
+    handle.position.z = -3
+    handle.updateMatrixWorld(true)
+
+    const existing = { distance: 42 } as Intersection
+    const intersections = [existing]
+    const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, -1))
+
+    raycastHandleFirst.call(handle, raycaster, intersections)
+
+    expect(intersections[0]).toBe(existing)
+    expect(intersections[0]?.distance).toBe(42)
+    expect(intersections[1]?.object).toBe(handle)
+    expect(intersections[1]?.distance).toBe(-1)
+  })
+
+  it('preserves a miss without fabricating a handle intersection', () => {
+    const handle = new Mesh(new BoxGeometry(0.045, 0.045, 0.045))
+    handle.position.set(1, 0, -3)
+    handle.updateMatrixWorld(true)
+
+    const intersections: Intersection[] = []
+    const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, -1))
+
+    raycastHandleFirst.call(handle, raycaster, intersections)
+
+    expect(intersections).toHaveLength(0)
+  })
+
+  it('gives an actual handle hit deterministic priority over a nearer background entity', () => {
+    const background = new Mesh(new BoxGeometry(1, 1, 1))
+    background.name = 'background-entity'
+    background.position.z = -2
+    const handle = new Mesh(new BoxGeometry(0.045, 0.045, 0.045))
+    handle.name = 'resize-width-handle'
+    handle.position.z = -3
+    expect(raycastHandleFirst).toEqual(expect.any(Function))
+    handle.raycast = raycastHandleFirst
+
+    background.updateMatrixWorld(true)
+    handle.updateMatrixWorld(true)
+
+    const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, -1))
+    const intersections = raycaster.intersectObjects([background, handle])
+
+    expect(intersections[0]?.object).toBe(handle)
+    expect(intersections[0]?.distance).toBe(-1)
+    expect(handle.position.toArray()).toEqual([0, 0, -3])
+    expect(intersections.some(({ object }) => object === background)).toBe(true)
+  })
+
   it('places each handle around the selected entity in its local dimensions', async () => {
     const controller: InteractionController = {
       active: false,
@@ -140,6 +200,72 @@ describe('ResizeHandles', () => {
     } finally {
       warn.mockRestore()
     }
+  })
+
+  it('notifies only when a resize starts successfully', async () => {
+    let active = false
+    const onResizeStart = vi.fn()
+    const controller: InteractionController = {
+      get active() {
+        return active
+      },
+      start: vi.fn(() => {
+        active = true
+        return true
+      }),
+      updateTransform: vi.fn(),
+      updateDimensions: vi.fn(),
+      resizeByLocalDelta: vi.fn(),
+      commit: vi.fn(() => {
+        active = false
+        return true
+      }),
+      cancel: vi.fn(() => {
+        active = false
+        return true
+      }),
+    }
+    const renderer = await create(
+      <ResizeHandles
+        entityId="selected"
+        entityObject={identityObject}
+        dimensions={{ width: 1000, depth: 600, height: 400 }}
+        enabled
+        controller={controller}
+        onResizeStart={onResizeStart}
+      />,
+    )
+    const handle = renderer.scene.findByProps({ name: 'resize-width-handle' })
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    }
+    const event = {
+      pointerId: 1,
+      target,
+      stopPropagation: vi.fn(),
+      unprojectedPoint: localPoint(0),
+    } as never
+
+    await handle.props.onPointerUp(event)
+    expect(onResizeStart).not.toHaveBeenCalled()
+
+    await handle.props.onPointerDown(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(1)
+    await handle.props.onPointerUp(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(1)
+
+    await handle.props.onPointerDown(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(2)
+    await handle.props.onPointerCancel(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(2)
+
+    await handle.props.onPointerDown(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(3)
+    await handle.props.onLostPointerCapture(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(3)
+
+    await renderer.unmount()
   })
 
   it('emits app-handler phases without instrumenting pointermove', async () => {

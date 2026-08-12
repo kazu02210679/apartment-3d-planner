@@ -23,6 +23,7 @@ async function downloadText(page: Page): Promise<string> {
 
 async function loadPerformanceScene(page: Page) {
   const fixture = createPerformanceScene(100)
+  expect(fixture.entities.length).toBe(131)
   await page.locator('input[type="file"]').setInputFiles({
     name: 'performance.json',
     mimeType: 'application/json',
@@ -42,7 +43,7 @@ async function loadPerformanceScene(page: Page) {
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
-test('100-object production selection and numeric edit median is below 250ms with a lazy renderer chunk', async ({
+test('131-entity production selection and numeric edit median is below 250ms with a lazy renderer chunk', async ({
   page,
 }, testInfo) => {
   const manifest = JSON.parse(
@@ -141,7 +142,7 @@ test('100-object production selection and numeric edit median is below 250ms wit
 
   const measuredMedian = median(samples)
   console.log(
-    `Task 11 performance samples: ${JSON.stringify(samples)}, median: ${measuredMedian}`,
+    `131-entity performance samples: ${JSON.stringify(samples)}, median: ${measuredMedian}`,
   )
   expect(measuredMedian).toBeLessThan(250)
 
@@ -165,7 +166,7 @@ test('100-object production selection and numeric edit median is below 250ms wit
       rendererGzipBytes: gzipSync(rendererAsset).length,
     },
   }
-  console.log(`Task 11 performance metrics: ${JSON.stringify(metrics)}`)
+  console.log(`131-entity performance metrics: ${JSON.stringify(metrics)}`)
   await testInfo.attach('performance-metrics.json', {
     body: JSON.stringify(metrics),
     contentType: 'application/json',

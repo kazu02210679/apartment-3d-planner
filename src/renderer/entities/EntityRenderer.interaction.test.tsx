@@ -29,8 +29,9 @@ const entity: Entity = {
 }
 
 describe('EntityRenderer interactions', () => {
-  it('renders a selected outline and selects the stable entity id on a scene hit', async () => {
+  it('selects on click while preserving secondary-button context menus', async () => {
     const onSelect = vi.fn()
+    const onContextMenu = vi.fn()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
@@ -41,6 +42,7 @@ describe('EntityRenderer interactions', () => {
           selected
           outOfBounds={false}
           onSelect={onSelect}
+          onContextMenu={onContextMenu}
         />,
       )
       const renderedEntity = renderer.scene.findByProps({ name: entity.id })
@@ -48,7 +50,18 @@ describe('EntityRenderer interactions', () => {
       expect(renderedEntity.findByProps({ name: 'selection-outline' })).toBeDefined()
       await renderer.fireEvent(renderedEntity, 'click')
 
+      expect(onSelect).toHaveBeenCalledOnce()
       expect(onSelect).toHaveBeenCalledWith(entity.id)
+
+      const contextMenuEvent = { button: 2 } as unknown as MouseEvent
+      const stopPropagation = vi.fn()
+      await renderer.fireEvent(renderedEntity, 'contextMenu', {
+        nativeEvent: contextMenuEvent,
+        stopPropagation,
+      })
+
+      expect(stopPropagation).toHaveBeenCalledOnce()
+      expect(onContextMenu).toHaveBeenCalledWith(entity.id, contextMenuEvent)
     } finally {
       warn.mockRestore()
       error.mockRestore()

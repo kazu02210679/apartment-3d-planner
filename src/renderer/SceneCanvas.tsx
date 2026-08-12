@@ -127,6 +127,17 @@ export function SceneCanvas({
   const clearSelection = useCallback(() => {
     if (snapshot.mode === 'edit') store.clearSelection()
   }, [snapshot.mode, store])
+  const pointerMissSuppressionRef = useRef(false)
+  const onCanvasPointerDownCapture = useCallback(() => {
+    pointerMissSuppressionRef.current = false
+  }, [])
+  const onResizeStart = useCallback(() => {
+    pointerMissSuppressionRef.current = true
+  }, [])
+  const onCanvasPointerMissed = useCallback(() => {
+    if (pointerMissSuppressionRef.current) return
+    clearSelection()
+  }, [clearSelection])
   const openPlacementMenu = useCallback(
     (entityId: string, clientX: number, clientY: number) => {
       if (
@@ -243,6 +254,7 @@ export function SceneCanvas({
         if (!(event.target as HTMLElement).closest('[data-placement-menu]'))
           setPlacementMenu(undefined)
       }}
+      onPointerDownCapture={onCanvasPointerDownCapture}
     >
       <nav className="scene-camera-controls" aria-label="Camera controls">
         <button
@@ -305,7 +317,7 @@ export function SceneCanvas({
             fallback={<FallbackPanel />}
             gl={{ antialias: profile.antialias, alpha: false }}
             shadows
-            onPointerMissed={clearSelection}
+            onPointerMissed={onCanvasPointerMissed}
           >
             {evidenceEnabled ? (
               <RendererEvidenceBridge profile={profile} store={store} />
@@ -320,7 +332,8 @@ export function SceneCanvas({
               profile={profile}
               activeTool={snapshot.activeTool}
               onEntitySelect={selectEntity}
-              onEmptyHit={clearSelection}
+              onEmptyHit={onCanvasPointerMissed}
+              onResizeStart={onResizeStart}
               onEntityContextMenu={onEntityContextMenu}
             />
           </Canvas>

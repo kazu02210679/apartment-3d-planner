@@ -74,6 +74,7 @@ interface SceneRootProps {
   readonly onEntitySelect: (id: string) => void
   readonly onEntityContextMenu?: (id: string, event: MouseEvent) => void
   readonly onEmptyHit: () => void
+  readonly onResizeStart?: () => void
 }
 
 export function SceneRoot({
@@ -88,6 +89,7 @@ export function SceneRoot({
   onEntitySelect,
   onEntityContextMenu = () => undefined,
   onEmptyHit,
+  onResizeStart = () => undefined,
 }: SceneRootProps) {
   const objects = useRef(new Map<string, Group>())
   const [selectedObject, setSelectedObject] = useState<Group | null>(null)
@@ -171,6 +173,7 @@ export function SceneRoot({
           dimensions={resolvedSelectedDimensions}
           enabled={mode === 'edit' && canDirectManipulate}
           controller={controller}
+          onResizeStart={onResizeStart}
         />
       ) : undefined
     const childNodes = children?.length ? children.map(renderEntity) : undefined

@@ -4,6 +4,7 @@ import type { Object3D } from 'three'
 import { toRendererDimensions } from '../adapters'
 import type { Dimensions } from '../../domain/schema'
 import type { InteractionController } from './interaction-controller'
+import { raycastHandleFirst } from './handle-raycast'
 
 interface ResizeHandlesProps {
   readonly entityId: string
@@ -11,10 +12,10 @@ interface ResizeHandlesProps {
   readonly dimensions: Dimensions
   readonly enabled: boolean
   readonly controller: InteractionController
+  readonly onResizeStart?: () => void
 }
 
 const HANDLE_SIZE = 0.045
-
 function startResizeEvidencePhase(phase: string): number | null {
   return (
     window as typeof window & {
@@ -121,6 +122,7 @@ export function ResizeHandles({
   dimensions,
   enabled,
   controller,
+  onResizeStart = () => undefined,
 }: ResizeHandlesProps) {
   const pointer = useRef<
     | {
@@ -148,7 +150,8 @@ export function ResizeHandles({
   useEffect(() => {
     if (!enabled) return
     const cancel = () => {
-      if (controller.active) controller.cancel()
+      const wasActive = controller.active
+      if (wasActive) controller.cancel()
       cleanupResizeEvidenceState()
       clearPointer()
     }
@@ -167,7 +170,8 @@ export function ResizeHandles({
   }, [clearPointer, controller, enabled])
   useEffect(
     () => () => {
-      if (controller.active) controller.cancel()
+      const wasActive = controller.active
+      if (wasActive) controller.cancel()
       cleanupResizeEvidenceState()
       clearPointer()
     },
@@ -182,6 +186,7 @@ export function ResizeHandles({
     try {
       event.stopPropagation()
       if (!entityObject || !controller.start(entityId, 'resize', entityObject)) return
+      onResizeStart()
       const target = event.target as unknown as {
         setPointerCapture(pointerId: number): void
         releasePointerCapture(pointerId: number): void
@@ -230,7 +235,7 @@ export function ResizeHandles({
     const wasActive = controller.active
     try {
       event.stopPropagation()
-      if (controller.active) controller.commit()
+      if (wasActive) controller.commit()
       clearPointer()
     } finally {
       endResizeEvidencePhase(phase)
@@ -239,14 +244,16 @@ export function ResizeHandles({
   }
   const cancel = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation()
-    if (controller.active) controller.cancel()
+    const wasActive = controller.active
+    if (wasActive) controller.cancel()
     cleanupResizeEvidenceState()
     clearPointer()
   }
   const lostCapture = (event: ThreeEvent<PointerEvent>) => {
     const interrupted = controller.active || capture.current !== undefined
     event.stopPropagation()
-    if (controller.active) controller.cancel()
+    const wasActive = controller.active
+    if (wasActive) controller.cancel()
     if (interrupted) cleanupResizeEvidenceState()
     clearPointer()
   }
@@ -259,14 +266,20 @@ export function ResizeHandles({
       key={name}
       name={name}
       position={position}
+      raycast={raycastHandleFirst}
       onPointerDown={begin(index)}
       onPointerMove={move}
       onPointerUp={finish}
+      onClick={(event) => event.stopPropagation()}
       onPointerCancel={cancel}
       onLostPointerCapture={lostCapture}
     >
       <boxGeometry args={[HANDLE_SIZE, HANDLE_SIZE, HANDLE_SIZE]} />
-      <meshBasicMaterial color="#d7f36b" />
+      <meshBasicMaterial
+        color="#d7f36b"
+        depthTest={false}
+        depthWrite={false}
+      />
     </mesh>
   )
   return (

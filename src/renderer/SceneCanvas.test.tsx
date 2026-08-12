@@ -2,14 +2,39 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@react-three/fiber', () => ({
-  Canvas: ({ children }: { readonly children: React.ReactNode }) => <div>{children}</div>,
+  Canvas: ({
+    children,
+    onPointerMissed,
+  }: {
+    readonly children: React.ReactNode
+    readonly onPointerMissed?: () => void
+  }) => (
+    <div data-testid="r3f-canvas" onClick={onPointerMissed}>
+      {children}
+    </div>
+  ),
   useThree: () => ({
     scene: { name: 'scene-canvas-test-scene' },
     camera: { name: 'scene-canvas-test-camera' },
     gl: { name: 'scene-canvas-test-renderer' },
   }),
 }))
-vi.mock('./SceneRoot', () => ({ SceneRoot: () => null }))
+vi.mock('./SceneRoot', () => ({
+  SceneRoot: ({
+    store,
+    onResizeStart,
+  }: {
+    readonly store: { beginInteraction: (label: string) => boolean }
+    readonly onResizeStart?: () => void
+  }) => (
+    <div
+      data-testid="resize-handle"
+      onPointerDown={() => {
+        if (store.beginInteraction('resize entity')) onResizeStart?.()
+      }}
+    />
+  ),
+}))
 
 import { createEditorStore } from '../app/editor-store'
 import { createEmptyScene } from '../domain/scene'
@@ -176,5 +201,80 @@ describe('SceneCanvas', () => {
         .getAllByRole('menuitem')
         .every((item) => (item as HTMLButtonElement).disabled),
     ).toBe(true)
+  })
+
+  it('ignores resize-generated misses until the next real pointerdown', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+    store.selectEntity(entityId)
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    const handle = screen.getByTestId('resize-handle')
+    const canvas = screen.getByTestId('r3f-canvas')
+
+    act(() => {
+      fireEvent.pointerDown(handle)
+      fireEvent.pointerMove(handle)
+      fireEvent.pointerUp(handle)
+      fireEvent.click(canvas)
+    })
+
+    expect(store.getSnapshot().selectedEntityId).toBe(entityId)
+
+    act(() => {
+      fireEvent.pointerDown(canvas)
+      fireEvent.click(canvas)
+    })
+    expect(store.getSnapshot().selectedEntityId).toBeNull()
+  })
+
+  it('clears a stale suppression latch after a later pointerdown before a miss', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+    store.selectEntity(entityId)
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    const handle = screen.getByTestId('resize-handle')
+    const canvas = screen.getByTestId('r3f-canvas')
+
+    act(() => {
+      fireEvent.pointerDown(handle)
+      fireEvent.pointerUp(handle)
+      fireEvent.pointerDown(canvas)
+      fireEvent.click(canvas)
+    })
+
+    expect(store.getSnapshot().selectedEntityId).toBeNull()
+  })
+
+  it('clears selection for an ordinary miss without an interaction', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+    store.selectEntity(entityId)
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    const canvas = screen.getByTestId('r3f-canvas')
+    fireEvent.pointerDown(canvas)
+    fireEvent.click(canvas)
+
+    expect(store.getSnapshot().selectedEntityId).toBeNull()
   })
 })

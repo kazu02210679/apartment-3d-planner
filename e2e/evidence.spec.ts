@@ -2117,6 +2117,39 @@ test('AC-007 paired transform compares zero-history and 50-history p95', async (
   expect(artifact.status).toBe('PASS')
 })
 
+test('AC-008 focused resize commit preserves the selected entity', async ({ page }) => {
+  await installEvidenceProbe(page)
+  await openEvidencePage(page)
+  await page.getByTestId('catalog-add-desk.l-shaped-sit-stand').click()
+  await expect(page.getByTestId('dimensions-width')).toBeVisible()
+  await page.getByTestId('tool-resize').click()
+  const selectedId = await page.locator('.inspector-title .muted-copy').getAttribute('title')
+  if (!selectedId) throw new Error('The added desk did not expose a stable entity id.')
+  const readSelectedId = () =>
+    page.locator('.inspector-title .muted-copy').getAttribute('title')
+  const handle = await waitForPoint(
+    () => projectedObjectPoint(page, 'resize-width-handle'),
+    'focused resize handle',
+  )
+  await page.mouse.move(handle.x, handle.y)
+  await page.mouse.down()
+  const afterPointerDown = await readSelectedId()
+  await page.mouse.move(handle.x + 2, handle.y)
+  const afterPointerMove = await readSelectedId()
+  await page.mouse.up()
+  const afterPointerUp = await readSelectedId()
+  if (afterPointerUp !== selectedId) {
+    throw new Error(
+      JSON.stringify({
+        selectedId,
+        afterPointerDown,
+        afterPointerMove,
+        afterPointerUp,
+      }),
+    )
+  }
+})
+
 test('AC-008 five commits reach a stable canonical frame within 50ms median and 100ms max', async ({
   page,
   browser,
@@ -2128,7 +2161,7 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
   await page.getByTestId('catalog-add-desk.l-shaped-sit-stand').click()
   await expect(page.getByTestId('dimensions-width')).toBeVisible()
   await page.getByTestId('tool-resize').click()
-  const selectedId = await page.locator('.inspector-title .muted-copy').textContent()
+  const selectedId = await page.locator('.inspector-title .muted-copy').getAttribute('title')
   if (!selectedId) throw new Error('The added desk did not expose a stable entity id.')
   const beforeCommitScene = await exportedScene(page)
   const canonicalScenes = [beforeCommitScene]
@@ -2200,9 +2233,13 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
     localStorage.getItem('home-lab-scene'),
   )
   const readCancelSelection = () =>
-    page.evaluate(
-      () => document.querySelector('.inspector-title .muted-copy')?.textContent ?? null,
-    )
+    page.evaluate(() => {
+      const element = document.querySelector('.inspector-title .muted-copy')
+      return {
+        text: element?.textContent ?? null,
+        title: element?.getAttribute('title') ?? null,
+      }
+    })
   const cancelSelectionBefore = await readCancelSelection()
   const cancelHandle = await waitForPoint(
     () => projectedObjectPoint(page, 'resize-width-handle'),
@@ -2211,7 +2248,7 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
   await page.mouse.move(cancelHandle.x, cancelHandle.y)
   await page.mouse.down()
   for (let step = 1; step <= 4; step += 1) {
-    await page.mouse.move(cancelHandle.x + (2 * step) / 4, cancelHandle.y)
+    await page.mouse.move(cancelHandle.x + (8 * step) / 4, cancelHandle.y)
   }
   const cancelGeometryTransient = await readResizeGeometryWitness(page, selectedId)
   const cancelCounters = await readRendererEvidenceCounters(page)
@@ -2239,6 +2276,12 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
     readonly historyRestored: boolean
     readonly storageRestored: boolean
     readonly selectionStable: boolean
+    readonly selectionWitness: {
+      readonly expectedId: string
+      readonly before: { readonly text: string | null; readonly title: string | null }
+      readonly transient: { readonly text: string | null; readonly title: string | null }
+      readonly after: { readonly text: string | null; readonly title: string | null }
+    }
     readonly rendererRestored: boolean
     readonly restorationElapsedMs: number
     readonly sceneBefore: string
@@ -2265,9 +2308,15 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
       JSON.stringify(cancelCountersBefore.history),
     storageRestored: cancelStorageAfter === cancelStorageBefore,
     selectionStable:
-      cancelSelectionBefore === selectedId &&
-      cancelSelectionTransient === selectedId &&
-      cancelSelectionAfter === selectedId,
+      cancelSelectionBefore.title === selectedId &&
+      cancelSelectionTransient.title === selectedId &&
+      cancelSelectionAfter.title === selectedId,
+    selectionWitness: {
+      expectedId: selectedId,
+      before: cancelSelectionBefore,
+      transient: cancelSelectionTransient,
+      after: cancelSelectionAfter,
+    },
     rendererRestored: cancelRestoration.restored,
     restorationElapsedMs: cancelRestoration.elapsedMs,
     sceneBefore: cancelSceneBefore,
