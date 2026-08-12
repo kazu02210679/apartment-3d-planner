@@ -83,6 +83,7 @@ function SceneStage({ store }: { store: EditorStore }) {
 export function EditorShell({ store }: { store: EditorStore }) {
   const snapshot = useSnapshot(store)
   const panel = snapshot.mobilePanel
+  const editing = snapshot.mode === 'edit'
   const mobileOpenerRef = useRef<HTMLButtonElement | null>(null)
   const mobileCloseRef = useRef<HTMLButtonElement | null>(null)
   const mobileSheetRef = useRef<HTMLDivElement | null>(null)
@@ -142,7 +143,7 @@ export function EditorShell({ store }: { store: EditorStore }) {
           {snapshot.errorMessage}
         </p>
       ) : null}
-      <div className="mobile-controls" aria-label="モバイルパネル操作">
+      {editing ? <div className="mobile-controls" aria-label="モバイルパネル操作">
         <button
           type="button"
           aria-expanded={panel === 'catalog'}
@@ -167,9 +168,9 @@ export function EditorShell({ store }: { store: EditorStore }) {
         >
           プロパティ
         </button>
-      </div>
-      <div className="workspace-layout">
-        <aside className="panel panel--left" aria-label="シーンパネル">
+      </div> : null}
+      <div className={`workspace-layout${editing ? '' : ' workspace-layout--preview'}`}>
+        {editing ? <aside className="panel panel--left" aria-label="シーンパネル">
           <div className="tab-list" role="tablist" aria-label="左パネル">
             <button
               role="tab"
@@ -191,11 +192,11 @@ export function EditorShell({ store }: { store: EditorStore }) {
             </button>
           </div>
           {left}
-        </aside>
+        </aside> : null}
         <SceneStage store={store} />
-        <Inspector store={store} />
+        {editing ? <Inspector store={store} /> : null}
       </div>
-      {panel !== 'none' ? (
+      {editing && panel !== 'none' ? (
         <div
           ref={mobileSheetRef}
           id="mobile-sheet"

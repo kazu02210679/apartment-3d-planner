@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { createEmptyScene } from '../domain/scene'
+import { SceneHistory } from '../commands/history'
 import { createMemoryStorage, SceneStorage } from '../persistence/storage'
 import { createEditorStore, getResolvedCatalog } from './editor-store'
+import { createInteractionController } from '../renderer/controls/interaction-controller'
 
 function ids() {
   let index = 0
@@ -10,6 +12,187 @@ function ids() {
 }
 
 describe('EditorStore', () => {
+  it('emits evidence-only transaction, history, autosave, and publish phases', () => {
+    const phases: string[] = []
+    let token = 0
+    const evidenceWindow = window as typeof window & {
+      __apartmentEvidenceProbe?: {
+        startPhase: (phase: string) => number | null
+        endPhase: (token: number | null) => void
+      }
+    }
+    evidenceWindow.__apartmentEvidenceProbe = {
+      startPhase: (phase) => {
+        phases.push(`start:${phase}`)
+        return ++token
+      },
+      endPhase: (value) => phases.push(`end:${value}`),
+    }
+    try {
+      const idFactory = ids()
+      const autosave = {
+        schedule: vi.fn(),
+        flush: () => ({ state: 'idle' as const }),
+        dispose: () => undefined,
+        getStatus: () => ({ state: 'idle' as const }),
+      }
+      const scene = createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' })
+      const store = createEditorStore({ initialScene: scene, idFactory, autosave })
+      const entityId = store.addCatalogItem('desk.straight')!
+      phases.length = 0
+      expect(store.beginInteraction('resize entity')).toBe(true)
+      const entity = store.getSnapshot().scene.entities.find((item) => item.id === entityId)!
+      expect(
+        store.updateInteractionGeometry(entityId, entity.transform, {
+          ...entity.dimensions,
+          width: entity.dimensions.width + 10,
+        }),
+      ).toBe(true)
+      expect(store.commitInteraction()).toBe(true)
+      expect(phases.map((entry) => entry.replace(/\d+$/, '#'))).toEqual([
+        'start:resize-transaction',
+        'end:#',
+        'start:resize-begin-publish',
+        'end:#',
+        'start:resize-history',
+        'end:#',
+        'start:resize-autosave-schedule',
+        'end:#',
+        'start:resize-commit-publish',
+        'end:#',
+      ])
+    } finally {
+      delete evidenceWindow.__apartmentEvidenceProbe
+    }
+  })
+
+  it('commits placement correction atomically with one publication and reversible bytes', () => {
+    const idFactory = ids()
+    const autosave = {
+      schedule: vi.fn(),
+      flush: () => ({ state: 'idle' as const }),
+      dispose: () => undefined,
+      getStatus: () => ({ state: 'idle' as const }),
+    }
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+      idFactory,
+      autosave,
+    })
+    const deskId = store.addCatalogItem('desk.straight')!
+    const monitorId = store.addCatalogItem('display.monitor')!
+    expect(deskId).toBeTruthy()
+    autosave.schedule.mockClear()
+    const before = store.exportJson()
+    const notify = vi.fn()
+    store.subscribe(notify)
+
+    expect(store.placeEntity(monitorId, 'nearest')).toBe(true)
+    const after = store.exportJson()
+    expect(after).not.toBe(before)
+    expect(notify).toHaveBeenCalledTimes(1)
+    expect(autosave.schedule).toHaveBeenCalledTimes(1)
+    expect(store.getSnapshot().canUndo).toBe(true)
+
+    expect(store.undo()).toBe(true)
+    expect(store.exportJson()).toBe(before)
+    expect(store.redo()).toBe(true)
+    expect(store.exportJson()).toBe(after)
+  })
+
+  it('publishes undo and redo availability without reading a complete history snapshot', () => {
+    const idFactory = ids()
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+      idFactory,
+    })
+    const snapshot = vi.spyOn(SceneHistory.prototype, 'snapshot')
+
+    store.addCatalogItem('display.monitor')
+
+    expect(store.getSnapshot().canUndo).toBe(true)
+    expect(snapshot).not.toHaveBeenCalled()
+  })
+
+  it('cancels a renderer draft before a competing document mutation', () => {
+    const idFactory = ids()
+    const autosave = {
+      schedule: vi.fn(),
+      flush: () => ({ state: 'idle' as const }),
+      dispose: () => undefined,
+      getStatus: () => ({ state: 'idle' as const }),
+    }
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+      idFactory,
+      autosave,
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+    autosave.schedule.mockClear()
+    const before = store.exportJson()
+    const target = {
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+    }
+    const controller = createInteractionController(store)
+
+    expect(controller.start(entityId, 'move', target as never)).toBe(true)
+    controller.updateTransform([0.75, 0.5, 0])
+    expect(store.exportJson()).toBe(before)
+    expect(store.getSnapshot().interactionActive).toBe(true)
+
+    expect(store.addCatalogItem('display.monitor')).toBeTruthy()
+    expect(controller.active).toBe(false)
+    expect(target.position).toEqual({ x: 0, y: 0, z: 0 })
+    expect(store.getSnapshot().interactionActive).toBe(false)
+    expect(
+      store.getSnapshot().scene.entities.find((entity) => entity.id === entityId)
+        ?.transform.position.x,
+    ).toBe(0)
+    expect(autosave.schedule).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels the active draft before every competing document gateway', () => {
+    const gateways: readonly [string, (store: ReturnType<typeof createEditorStore>, entityId: string, before: string) => unknown][] = [
+      ['undo', (store) => store.undo()],
+      ['redo', (store) => store.redo()],
+      ['delete', (store, entityId) => store.deleteEntity(entityId)],
+      ['duplicate', (store, entityId) => store.duplicateEntity(entityId)],
+      ['room', (store) => store.setRoomPreset('8-tatami')],
+      ['catalog', (store) => store.addCatalogItem('display.monitor')],
+      ['dimensions', (store, entityId) => store.setDimensions(entityId, { width: 520, depth: 500, height: 1000 })],
+      ['import', (store, _entityId, before) => store.importJson(before)],
+    ]
+
+    for (const [label, gateway] of gateways) {
+      const idFactory = ids()
+      const store = createEditorStore({
+        initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+        idFactory,
+      })
+      const entityId = store.addCatalogItem('power.strip')!
+      const before = store.exportJson()
+      const target = {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      }
+      const controller = createInteractionController(store)
+
+      expect(controller.start(entityId, 'move', target as never), label).toBe(true)
+      expect(controller.updateTransform([0.75, 0.5, 0])).toBe(true)
+      expect(store.getSnapshot().interactionActive).toBe(true)
+
+      gateway(store, entityId, before)
+
+      expect(controller.active, label).toBe(false)
+      expect(store.getSnapshot().interactionActive, label).toBe(false)
+      expect(target.position, label).toEqual({ x: 0, y: 0, z: 0 })
+      expect(store.exportJson(), label).not.toContain('0.75')
+    }
+  })
+
   it('exposes a transient interaction facade instead of persisting drag state', () => {
     const idFactory = ids()
     const store = createEditorStore({

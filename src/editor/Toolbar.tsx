@@ -6,6 +6,41 @@ function useSnapshot(store: EditorStore) {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
 }
 
+function QualityModeControls({
+  store,
+  mode,
+}: {
+  readonly store: EditorStore
+  readonly mode: 'edit' | 'preview'
+}) {
+  return mode === 'edit' ? (
+    <div className="quality-mode-switch" role="group" aria-label="表示モード">
+      <button className="mode-button is-active" type="button" aria-pressed="true">
+        編集
+      </button>
+      <button
+        className="mode-button mode-button--primary"
+        type="button"
+        aria-pressed="false"
+        onClick={() => store.setMode('preview')}
+      >
+        高品質プレビュー
+      </button>
+    </div>
+  ) : (
+    <div className="preview-mode-switch" aria-label="表示モード">
+      <span className="preview-mode-label">高品質プレビュー</span>
+      <button
+        className="mode-button"
+        type="button"
+        onClick={() => store.setMode('edit')}
+      >
+        編集に戻る
+      </button>
+    </div>
+  )
+}
+
 export function Toolbar({ store }: { store: EditorStore }) {
   const snapshot = useSnapshot(store)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -24,7 +59,7 @@ export function Toolbar({ store }: { store: EditorStore }) {
     }
   }
   return (
-    <header className="app-header">
+    <header className={`app-header app-header--${snapshot.mode}`}>
       <div className="brand-lockup">
         <span className="brand-mark" aria-hidden="true">
           ◇
@@ -35,6 +70,7 @@ export function Toolbar({ store }: { store: EditorStore }) {
         </div>
       </div>
       <div className="header-actions">
+        <QualityModeControls store={store} mode={snapshot.mode} />
         <button
           className="secondary-action"
           type="button"
@@ -42,24 +78,6 @@ export function Toolbar({ store }: { store: EditorStore }) {
         >
           <span aria-hidden="true">＋</span>新規シーン
         </button>
-        <div className="mode-switch" role="group" aria-label="表示モード">
-          <button
-            className={`mode-button ${snapshot.mode === 'edit' ? 'is-active' : ''}`}
-            type="button"
-            aria-pressed={snapshot.mode === 'edit'}
-            onClick={() => store.setMode('edit')}
-          >
-            編集
-          </button>
-          <button
-            className={`mode-button ${snapshot.mode === 'preview' ? 'is-active' : ''}`}
-            type="button"
-            aria-pressed={snapshot.mode === 'preview'}
-            onClick={() => store.setMode('preview')}
-          >
-            プレビュー
-          </button>
-        </div>
         <div className="tool-switch" role="group" aria-label="Direct manipulation tool">
           {(
             [
@@ -148,7 +166,7 @@ export function Toolbar({ store }: { store: EditorStore }) {
                 : '未保存'}
         </span>
         <button
-          className="toolbar-button toolbar-text"
+          className="toolbar-button toolbar-button--export toolbar-text"
           type="button"
           onClick={exportJson}
         >

@@ -1,6 +1,7 @@
 import { getCatalogDefinition, resolveCatalogInstance } from '../catalog/catalog'
 import { getCableRouting, withCableRouting } from '../domain/connections'
 import { findOutOfBoundsEntityIds } from '../domain/invariants'
+import { solvePlacement } from '../domain/placement'
 import { normalizeScene } from '../domain/normalize'
 import type { Connection, Entity, SceneDocument } from '../domain/schema'
 import { getWorldTransform, localTransformForWorld } from './math'
@@ -161,6 +162,46 @@ export function applyCommand(
         ),
       )
       break
+    case 'set-entity-geometry': {
+      const target = writable(scene, command.entityId)
+      const candidate = {
+        ...target,
+        transform: structuredClone(command.transform),
+        dimensions: structuredClone(command.dimensions),
+        ...(command.catalog
+          ? {
+              catalog: structuredClone(command.catalog),
+              overrides: structuredClone(command.overrides ?? target.overrides),
+            }
+          : {}),
+      }
+      if (candidate.catalog) {
+        const resolved = resolveCatalogInstance(candidate)
+        if (
+          resolved.dimensions.width !== command.dimensions.width ||
+          resolved.dimensions.depth !== command.dimensions.depth ||
+          resolved.dimensions.height !== command.dimensions.height
+        )
+          throw new Error('Catalog dimensions do not match the interaction draft.')
+        replaceEntity(scene, reconcileCablePortPositions(candidate, resolved.dimensions))
+      } else replaceEntity(scene, candidate)
+      break
+    }
+    case 'place-entity': {
+      const solution = solvePlacement(scene, {
+        entityId: command.entityId,
+        kind: command.placement,
+      })
+      if (solution.status === 'unavailable')
+        throw new Error(solution.reason ?? 'Placement correction is unavailable.')
+      if (solution.status === 'changed' && solution.transform) {
+        replaceEntity(scene, {
+          ...writable(scene, command.entityId),
+          transform: structuredClone(solution.transform),
+        })
+      }
+      break
+    }
     case 'set-catalog': {
       const target = writable(scene, command.entityId)
       const definition = getCatalogDefinition(

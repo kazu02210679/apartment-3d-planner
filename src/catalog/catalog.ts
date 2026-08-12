@@ -7,6 +7,7 @@ import type {
   CatalogInstanceOverrides,
   DimensionOverrides,
   GeometryDescriptor,
+  PlacementProfile,
   ResolvedCatalogInstance,
 } from './types'
 
@@ -291,6 +292,136 @@ function resolveGeometry(
   return geometry
 }
 
+function defaultPlacementProfile(): PlacementProfile {
+  return {
+    contactPlane: 'bottom',
+    allowedTargetClasses: ['floor'],
+    preferredTargetClass: 'floor',
+    supportSurfaces: [],
+  }
+}
+
+function resolvePlacementProfile(
+  definition: CatalogDefinition,
+  dimensions: Dimensions,
+): PlacementProfile {
+  const surface = (
+    id: string,
+    center: { x: number; y: number; z: number },
+    width: number,
+    depth: number,
+    usableClearanceHeight?: number,
+  ) => ({
+    id,
+    center,
+    width,
+    depth,
+    ...(usableClearanceHeight === undefined ? {} : { usableClearanceHeight }),
+  })
+  const inferredProfile: PlacementProfile | undefined =
+    definition.id === 'display.monitor'
+      ? {
+          contactPlane: 'bottom',
+          allowedTargetClasses: ['floor', 'support-surface'],
+          preferredTargetClass: 'support-surface',
+          supportSurfaces: [],
+        }
+      : definition.id === 'desk.l-shaped-sit-stand'
+        ? {
+            contactPlane: 'bottom',
+            allowedTargetClasses: ['floor', 'support-surface'],
+            preferredTargetClass: 'support-surface',
+            supportSurfaces: [
+              surface('main-top', { x: 0, y: dimensions.height / 2, z: -350 }, 1800, 700),
+              surface('return-top', { x: 200, y: dimensions.height / 2, z: 350 }, 1400, 600),
+            ],
+          }
+        : definition.id === 'desk.straight'
+          ? {
+              contactPlane: 'bottom',
+              allowedTargetClasses: ['floor', 'support-surface'],
+              preferredTargetClass: 'support-surface',
+              supportSurfaces: [
+                surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
+              ],
+            }
+          : definition.id === 'desk.shelf'
+            ? {
+                contactPlane: 'bottom',
+                allowedTargetClasses: ['floor', 'support-surface'],
+                preferredTargetClass: 'support-surface',
+                supportSurfaces: [
+                  surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
+                ],
+              }
+            : definition.id === 'storage.shelf-cabinet'
+              ? {
+                  contactPlane: 'bottom',
+                  allowedTargetClasses: ['floor', 'support-surface'],
+                  preferredTargetClass: 'support-surface',
+                  supportSurfaces: [
+                    surface('interior-shelf-low', { x: 0, y: 320, z: 0 }, 700, 320, 520),
+                    surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
+                  ],
+                }
+              : definition.id === 'table.side'
+                ? {
+                    contactPlane: 'bottom',
+                    allowedTargetClasses: ['floor', 'support-surface'],
+                    preferredTargetClass: 'support-surface',
+                    supportSurfaces: [
+                      surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
+                    ],
+                  }
+                : undefined
+  const profile = definition.placement ?? inferredProfile ?? defaultPlacementProfile()
+  const supportSurfaces = profile.supportSurfaces.map((surface) => {
+    if (
+      !Number.isFinite(surface.center.x) ||
+      !Number.isFinite(surface.center.y) ||
+      !Number.isFinite(surface.center.z) ||
+      !Number.isFinite(surface.width) ||
+      !Number.isFinite(surface.depth) ||
+      surface.width <= 0 ||
+      surface.depth <= 0 ||
+      (surface.usableClearanceHeight !== undefined &&
+        (!Number.isFinite(surface.usableClearanceHeight) ||
+          surface.usableClearanceHeight <= 0))
+    ) {
+      throw new Error(`Invalid placement support surface ${surface.id} for ${definition.id}.`)
+    }
+    return {
+      ...surface,
+      center: { ...surface.center },
+    }
+  })
+  const allowedTargetClasses = [...profile.allowedTargetClasses]
+  const preferredTargetClass = profile.preferredTargetClass
+  if (!allowedTargetClasses.includes(preferredTargetClass)) {
+    throw new Error(`Invalid preferred placement target for ${definition.id}.`)
+  }
+  if (allowedTargetClasses.includes('support-surface') && supportSurfaces.length === 0) {
+    // A support preference without declared surfaces is safe but can only fall back.
+    return {
+      ...defaultPlacementProfile(),
+      allowedTargetClasses,
+      preferredTargetClass,
+      supportSurfaces,
+    }
+  }
+  // Touch the resolved dimensions here so future dimension-dependent profiles have a
+  // single validation boundary without adding placement data to SceneDocument.
+  if (Object.values(dimensions).some((value) => !Number.isFinite(value) || value <= 0)) {
+    throw new Error(`Invalid resolved dimensions for ${definition.id} placement.`)
+  }
+  return {
+    contactPlane: 'bottom',
+    allowedTargetClasses,
+    preferredTargetClass,
+    supportSurfaces,
+  }
+}
+
 for (const definition of GENERIC_CATALOG_DEFINITIONS) {
   validateDimensions(definition, definition.defaultDimensions)
   for (const preset of definition.presets) {
@@ -364,6 +495,10 @@ export function resolveCatalogInstance(entity: Entity): ResolvedCatalogInstance 
     capabilities: definition.capabilities,
     inspectorFields: definition.inspectorFields,
     portDefinitions: definition.ports,
+    placement: resolvePlacementProfile(
+      definition,
+      resolveDimensions(definition, entity.catalog.presetId, overrides.dimensions),
+    ),
   }
 }
 

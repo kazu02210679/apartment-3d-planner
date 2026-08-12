@@ -43,13 +43,19 @@ test('preview is transient, keeps the selected workstation entity, and removes d
     throw new Error('The selected desk did not expose its stable entity ID.')
   const before = await exportedScene(page)
 
-  await page.locator('.mode-switch .mode-button').nth(1).click()
+  await page.getByRole('button', { name: '高品質プレビュー', exact: true }).click()
   await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
     'data-renderer-profile',
     'preview',
   )
-  await expect(page.locator('.tool-switch .mode-button').first()).toBeDisabled()
-  await expect(page.locator('.inspector-title .muted-copy')).toHaveText(selectedId)
+  await expect(page.locator('.panel--left')).toHaveCount(0)
+  await expect(page.locator('.inspector')).toHaveCount(0)
+  const previewJson = await exportedScene(page)
+  expect(
+    (JSON.parse(previewJson) as { entities: { id: string }[] }).entities.some(
+      (entity) => entity.id === selectedId,
+    ),
+  ).toBe(true)
   await testInfo.attach('preview-mode', {
     body: await page.screenshot(),
     contentType: 'image/png',
@@ -82,7 +88,7 @@ test('preview visual profiles remain usable at desktop and narrow mobile viewpor
       contentType: 'image/png',
     })
 
-    await page.locator('.mode-switch .mode-button').nth(1).click()
+    await page.getByRole('button', { name: '高品質プレビュー', exact: true }).click()
     await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
       'data-renderer-profile',
       'preview',

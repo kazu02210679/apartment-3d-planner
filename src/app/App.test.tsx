@@ -11,6 +11,8 @@ describe('apartment planner shell', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新規シーン' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '編集' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'プレビュー' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '高品質プレビュー' }),
+    ).toBeInTheDocument()
   })
 })

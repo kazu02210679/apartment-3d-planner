@@ -2,14 +2,29 @@ import { Canvas } from '@react-three/fiber'
 import {
   Component,
   useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   useSyncExternalStore,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react'
 
 import type { EditorStore } from '../app/editor-store'
+import {
+  isPlacementEntityEligible,
+  solvePlacement,
+  type PlacementAction,
+} from '../domain/placement'
 import { FallbackPanel } from './FallbackPanel'
-import { getRendererProfile, isWebGLAvailable } from './quality'
+import { RendererEvidenceBridge } from './EvidenceBridge'
+import {
+  getRendererProfile,
+  isWebGLAvailable,
+  previewTierForFrameWindow,
+  type PreviewQualityTier,
+} from './quality'
 import { SceneRoot, type CameraIntent } from './SceneRoot'
 import { createInteractionController } from './controls/interaction-controller'
 import { toRendererTransform } from './adapters'
@@ -43,15 +58,163 @@ export function SceneCanvas({
   webglAvailable = isWebGLAvailable,
 }: SceneCanvasProps) {
   const snapshot = useSnapshot(store)
-  const profile = getRendererProfile(snapshot.mode)
+  const [previewTier, setPreviewTier] = useState<PreviewQualityTier>('high')
+  const profile = getRendererProfile(snapshot.mode, previewTier)
   const available = webglAvailable()
+  const evidenceEnabled =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).getAll('evidence').length === 1 &&
+    new URLSearchParams(window.location.search).get('evidence') === '1'
+  useLayoutEffect(() => {
+    if (!evidenceEnabled) return
+    const fineGrained = window.__apartmentResizeFineGrainedEvidence
+    if (
+      !fineGrained ||
+      fineGrained.handlerToLayoutToken === null ||
+      (fineGrained.kind === 'pointerdown') !== snapshot.interactionActive
+    )
+      return
+    window.__apartmentEvidenceProbe?.endPhase(fineGrained.handlerToLayoutToken)
+    fineGrained.handlerToLayoutToken = null
+    fineGrained.layoutToRenderToken =
+      window.__apartmentEvidenceProbe?.startPhase(
+        `resize-${fineGrained.kind}-layout-to-first-render`,
+      ) ?? null
+  }, [evidenceEnabled, snapshot.interactionActive])
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const [placementMenu, setPlacementMenu] = useState<
+    { readonly entityId: string; readonly left: number; readonly top: number } | undefined
+  >()
   const [cameraIntent, setCameraIntent] = useState<CameraIntent>('idle')
+  useEffect(() => {
+    setPreviewTier('high')
+    if (snapshot.mode !== 'preview' || typeof requestAnimationFrame === 'undefined')
+      return
+    let warmupFrames = 0
+    let lastTime: number | undefined
+    let windowSamples: number[] = []
+    let frameHandle = 0
+    const measure = (time: number) => {
+      if (lastTime !== undefined) {
+        const interval = time - lastTime
+        if (warmupFrames < 60) warmupFrames += 1
+        else {
+          windowSamples.push(interval)
+          if (windowSamples.length === 60) {
+            const samples = windowSamples
+            windowSamples = []
+            setPreviewTier((current) => previewTierForFrameWindow(current, samples))
+          }
+        }
+      }
+      lastTime = time
+      frameHandle = requestAnimationFrame(measure)
+    }
+    frameHandle = requestAnimationFrame(measure)
+    return () => cancelAnimationFrame(frameHandle)
+  }, [snapshot.mode])
   const requestCameraIntent = (intent: CameraIntent) => {
     setCameraIntent('idle')
     queueMicrotask(() => setCameraIntent(intent))
   }
-  const selectEntity = useCallback((id: string) => store.selectEntity(id), [store])
-  const clearSelection = useCallback(() => store.clearSelection(), [store])
+  const selectEntity = useCallback(
+    (id: string) => {
+      if (snapshot.mode === 'edit') store.selectEntity(id)
+    },
+    [snapshot.mode, store],
+  )
+  const clearSelection = useCallback(() => {
+    if (snapshot.mode === 'edit') store.clearSelection()
+  }, [snapshot.mode, store])
+  const openPlacementMenu = useCallback(
+    (entityId: string, clientX: number, clientY: number) => {
+      if (
+        snapshot.mode !== 'edit' ||
+        !isPlacementEntityEligible(snapshot.scene, entityId) ||
+        !canvasRef.current
+      )
+        return
+      const bounds = canvasRef.current.getBoundingClientRect()
+      setPlacementMenu({
+        entityId,
+        left: Math.max(8, clientX - bounds.left),
+        top: Math.max(8, clientY - bounds.top),
+      })
+    },
+    [snapshot.mode, snapshot.scene],
+  )
+  const onEntityContextMenu = useCallback(
+    (entityId: string, event: MouseEvent) => {
+      if (snapshot.mode !== 'edit') return
+      event.preventDefault()
+      openPlacementMenu(entityId, event.clientX, event.clientY)
+    },
+    [openPlacementMenu, snapshot.mode],
+  )
+  const onCanvasContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (snapshot.mode !== 'edit' || !snapshot.selectedEntityId) return
+      event.preventDefault()
+      openPlacementMenu(snapshot.selectedEntityId, event.clientX, event.clientY)
+    },
+    [openPlacementMenu, snapshot.mode, snapshot.selectedEntityId],
+  )
+  const applyPlacement = (placement: PlacementAction) => {
+    if (!placementMenu) return
+    store.placeEntity(placementMenu.entityId, placement)
+    setPlacementMenu(undefined)
+  }
+  const placementAvailability: Record<PlacementAction, boolean> = placementMenu
+    ? {
+        'in-bounds':
+          solvePlacement(snapshot.scene, {
+            entityId: placementMenu.entityId,
+            kind: 'in-bounds',
+          }).status !== 'unavailable',
+        nearest:
+          solvePlacement(snapshot.scene, {
+            entityId: placementMenu.entityId,
+            kind: 'nearest',
+          }).status !== 'unavailable',
+        floor:
+          solvePlacement(snapshot.scene, {
+            entityId: placementMenu.entityId,
+            kind: 'floor',
+          }).status !== 'unavailable',
+      }
+    : { 'in-bounds': false, nearest: false, floor: false }
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'End' ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        event.defaultPrevented ||
+        snapshot.mode !== 'edit' ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey
+      )
+        return
+      const target = event.target as HTMLElement | null
+      if (
+        target?.closest(
+          'input, textarea, select, button, [contenteditable="true"], [role="dialog"], [role="menu"]',
+        )
+      )
+        return
+      if (!snapshot.selectedEntityId) return
+      if (
+        store.placeEntity(snapshot.selectedEntityId, event.shiftKey ? 'floor' : 'nearest')
+      )
+        event.preventDefault()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [snapshot.mode, snapshot.selectedEntityId, store])
+  useEffect(() => {
+    if (snapshot.mode !== 'edit') setPlacementMenu(undefined)
+  }, [snapshot.mode])
   const nudgeSelected = () => {
     const id = snapshot.selectedEntityId
     const entity = id
@@ -72,9 +235,15 @@ export function SceneCanvas({
 
   return (
     <div
+      ref={canvasRef}
       className="scene-canvas"
       data-testid="scene-canvas"
       data-renderer-profile={profile.id}
+      onContextMenu={onCanvasContextMenu}
+      onPointerDown={(event) => {
+        if (!(event.target as HTMLElement).closest('[data-placement-menu]'))
+          setPlacementMenu(undefined)
+      }}
     >
       <nav className="scene-camera-controls" aria-label="Camera controls">
         <button
@@ -139,6 +308,9 @@ export function SceneCanvas({
             shadows
             onPointerMissed={clearSelection}
           >
+            {evidenceEnabled ? (
+              <RendererEvidenceBridge profile={profile} store={store} />
+            ) : null}
             <SceneRoot
               scene={snapshot.scene}
               selectedEntityIds={snapshot.selectedEntityIds}
@@ -149,12 +321,48 @@ export function SceneCanvas({
               activeTool={snapshot.activeTool}
               onEntitySelect={selectEntity}
               onEmptyHit={clearSelection}
+              onEntityContextMenu={onEntityContextMenu}
             />
           </Canvas>
         </RendererErrorBoundary>
       ) : (
         <FallbackPanel />
       )}
+      {placementMenu ? (
+        <div
+          className="placement-menu"
+          data-placement-menu="true"
+          role="menu"
+          aria-label="配置修正"
+          style={{ left: placementMenu.left, top: placementMenu.top }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!placementAvailability['in-bounds']}
+            onClick={() => applyPlacement('in-bounds')}
+          >
+            範囲内に戻す
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!placementAvailability.nearest}
+            onClick={() => applyPlacement('nearest')}
+          >
+            最寄りの支持面に置く
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!placementAvailability.floor}
+            onClick={() => applyPlacement('floor')}
+          >
+            床に置く
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -9,6 +9,7 @@ vi.mock('@react-three/drei', () => ({
   OrbitControls: ({ enabled }: { readonly enabled: boolean }) => (
     <group name="orbit-controls" userData={{ orbitEnabled: enabled }} />
   ),
+  ContactShadows: () => <group name="contact-shadows" />,
   TransformControls: () => <group name="transform-gizmo" />,
 }))
 vi.mock('./controls/ResizeHandles', () => ({

@@ -136,6 +136,7 @@ interface EntityRendererProps {
   readonly selected: boolean
   readonly outOfBounds: boolean
   readonly onSelect: (id: string) => void
+  readonly onContextMenu?: (id: string, event: MouseEvent) => void
   readonly onObjectReady?: (id: string, object: Group | null) => void
   readonly children?: ReactNode
   readonly profile?: RendererProfile
@@ -164,6 +165,7 @@ function entityRendererEqual(left: EntityRendererProps, right: EntityRendererPro
     left.selected === right.selected &&
     left.outOfBounds === right.outOfBounds &&
     left.onSelect === right.onSelect &&
+    left.onContextMenu === right.onContextMenu &&
     left.onObjectReady === right.onObjectReady &&
     left.profile === right.profile &&
     left.children === right.children
@@ -175,6 +177,7 @@ export const EntityRenderer = memo(function EntityRenderer({
   selected,
   outOfBounds,
   onSelect,
+  onContextMenu,
   onObjectReady,
   children,
   profile,
@@ -190,6 +193,10 @@ export const EntityRenderer = memo(function EntityRenderer({
     event.stopPropagation()
     onSelect(entity.id)
   }
+  const contextMenu = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation()
+    onContextMenu?.(entity.id, event.nativeEvent)
+  }
 
   return (
     <group
@@ -198,6 +205,7 @@ export const EntityRenderer = memo(function EntityRenderer({
       position={renderable.transform.position}
       rotation={renderable.transform.rotation}
       onClick={select}
+      onContextMenu={contextMenu}
     >
       <DetailedModel renderable={renderable} />
       {children}

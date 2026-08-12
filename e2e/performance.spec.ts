@@ -141,7 +141,7 @@ test('100-object production selection and numeric edit median is below 250ms wit
   )
   expect(measuredMedian).toBeLessThan(250)
 
-  await page.getByRole('button', { name: 'プレビュー' }).click()
+  await page.getByRole('button', { name: '高品質プレビュー', exact: true }).click()
   await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
     'data-renderer-profile',
     'preview',
@@ -153,7 +153,7 @@ test('100-object production selection and numeric edit median is below 250ms wit
     }
   ).entities.find((entity) => entity.id === targetId)
   expect(previewTarget?.transform.position.x).toBe(finalValue)
-  await page.getByRole('button', { name: '編集' }).click()
+  await page.getByRole('button', { name: '編集に戻る', exact: true }).click()
   await undo.click()
   const undoneExport = await downloadText(page)
   expect(undoneExport).not.toBe(previewExport)

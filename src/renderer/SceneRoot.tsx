@@ -1,4 +1,4 @@
-import { OrbitControls } from '@react-three/drei'
+import { ContactShadows, OrbitControls } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Group } from 'three'
@@ -71,6 +71,7 @@ interface SceneRootProps {
   readonly mode: 'edit' | 'preview'
   readonly activeTool: EditorTool
   readonly onEntitySelect: (id: string) => void
+  readonly onEntityContextMenu?: (id: string, event: MouseEvent) => void
   readonly onEmptyHit: () => void
 }
 
@@ -83,6 +84,7 @@ export function SceneRoot({
   mode,
   activeTool,
   onEntitySelect,
+  onEntityContextMenu = () => undefined,
   onEmptyHit,
 }: SceneRootProps) {
   const profile = getRendererProfile(mode)
@@ -183,9 +185,10 @@ export function SceneRoot({
       <EntityRenderer
         key={entity.id}
         entity={entity}
-        selected={selectedEntityIds.includes(entity.id)}
+        selected={mode === 'edit' && selectedEntityIds.includes(entity.id)}
         outOfBounds={outOfBoundsEntityIds.includes(entity.id)}
         onSelect={onEntitySelect}
+        onContextMenu={onEntityContextMenu}
         onObjectReady={registerObject}
         profile={profile}
       >
@@ -198,6 +201,17 @@ export function SceneRoot({
     <>
       <PreviewEnvironment profile={profile} />
       <RoomShell room={scene.room} onEmptyHit={onEmptyHit} profile={profile} />
+      {mode === 'preview' && profile.contactGrounding ? (
+        <ContactShadows
+          position={[0, 0.01, 0]}
+          scale={4.5}
+          far={4.5}
+          blur={2.4}
+          opacity={0.24}
+          frames={1}
+          resolution={512}
+        />
+      ) : null}
       {childrenByParent.get(null)?.map(renderEntity)}
       {cables.map((cable) => {
         try {
@@ -209,7 +223,7 @@ export function SceneRoot({
               kind={routing.kind}
               diameterMm={routing.diameterMm}
               points={resolveCableRoute(scene, cable)}
-              selected={selectedEntityIds.includes(cable.id)}
+              selected={mode === 'edit' && selectedEntityIds.includes(cable.id)}
               onSelect={onEntitySelect}
             />
           )

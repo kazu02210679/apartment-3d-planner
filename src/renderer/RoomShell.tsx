@@ -15,12 +15,17 @@ export function RoomShell({ room, onEmptyHit, profile }: RoomShellProps) {
     height: room.height,
   })
   const wallThickness = 0.05
+  const preview = profile?.id === 'preview'
 
   return (
     <group name="room-shell" onClick={onEmptyHit}>
       <mesh receiveShadow position={[0, -0.02, 0]}>
         <boxGeometry args={[width, 0.04, depth]} />
-        <meshStandardMaterial color="#243448" roughness={0.96} metalness={0} />
+        <meshStandardMaterial
+          color={preview ? '#4d4b48' : '#243448'}
+          roughness={preview ? 0.82 : 0.96}
+          metalness={0}
+        />
       </mesh>
       {profile?.showGrid !== false ? (
         <gridHelper
@@ -36,19 +41,19 @@ export function RoomShell({ room, onEmptyHit, profile }: RoomShellProps) {
       <mesh receiveShadow position={[0, height / 2, -depth / 2]}>
         <boxGeometry args={[width, height, wallThickness]} />
         <meshStandardMaterial
-          color={profile?.id === 'preview' ? '#23354b' : '#172131'}
-          roughness={profile?.id === 'preview' ? 0.72 : 0.92}
+          color={preview ? '#3d4855' : '#172131'}
+          roughness={preview ? 0.74 : 0.92}
           transparent
-          opacity={profile?.id === 'preview' ? 0.78 : 0.62}
+          opacity={preview ? 0.78 : 0.62}
         />
       </mesh>
       <mesh receiveShadow position={[-width / 2, height / 2, 0]}>
         <boxGeometry args={[wallThickness, height, depth]} />
         <meshStandardMaterial
-          color={profile?.id === 'preview' ? '#23354b' : '#172131'}
-          roughness={profile?.id === 'preview' ? 0.72 : 0.92}
+          color={preview ? '#3d4855' : '#172131'}
+          roughness={preview ? 0.74 : 0.92}
           transparent
-          opacity={profile?.id === 'preview' ? 0.78 : 0.62}
+          opacity={preview ? 0.78 : 0.62}
         />
       </mesh>
     </group>

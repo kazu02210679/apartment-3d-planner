@@ -10,6 +10,7 @@ import type {
   Vector3,
 } from '../domain/schema'
 import type { CableRouting } from '../domain/connections'
+import type { PlacementAction } from '../domain/placement'
 import type { RoomPresetId } from '../domain/room-presets'
 
 export type SceneCommand =
@@ -48,6 +49,19 @@ export type SceneCommand =
       readonly type: 'set-dimensions'
       readonly entityId: string
       readonly dimensions: Dimensions
+    }
+  | {
+      readonly type: 'set-entity-geometry'
+      readonly entityId: string
+      readonly transform: Transform
+      readonly dimensions: Dimensions
+      readonly catalog?: CatalogReference
+      readonly overrides?: JsonObject
+    }
+  | {
+      readonly type: 'place-entity'
+      readonly entityId: string
+      readonly placement: PlacementAction
     }
   | {
       readonly type: 'set-catalog'

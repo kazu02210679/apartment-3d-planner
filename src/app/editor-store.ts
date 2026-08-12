@@ -15,6 +15,7 @@ import {
 import { createCommandStore, type SceneCommand } from '../commands/command-store'
 import { sameScene } from '../commands/history'
 import { findOutOfBoundsEntityIds } from '../domain/invariants'
+import { isPlacementEntityEligible, type PlacementAction } from '../domain/placement'
 import {
   classifyCableConnection,
   getCableEndAttachment,
@@ -52,6 +53,7 @@ export interface EditorSnapshot {
   readonly outOfBoundsEntityIds: readonly string[]
   readonly canUndo: boolean
   readonly canRedo: boolean
+  readonly interactionActive: boolean
   readonly saveStatus: ReturnType<AutosaveCoordinator['getStatus']>
   readonly activeLeftTab: LeftTab
   readonly mobilePanel: MobilePanel
@@ -87,6 +89,7 @@ export interface EditorActions {
   setCatalogPreset(entityId: string, presetId: string | null): boolean
   setCatalogOverrides(entityId: string, overrides: JsonObject): boolean
   setCatalogCustomDimensions(entityId: string, dimensions: Dimensions): boolean
+  placeEntity(entityId: string, placement: PlacementAction): boolean
   resetCatalogOverride(entityId: string, key?: string): boolean
   setMaterial(entityId: string, materialId: string): boolean
   setRoomPreset(presetId: RoomPresetId): boolean
@@ -118,6 +121,11 @@ export interface EditorActions {
   beginInteraction(label: string, target?: unknown): boolean
   updateInteractionTransform(entityId: string, transform: Transform): boolean
   updateInteractionDimensions(entityId: string, dimensions: Dimensions): boolean
+  updateInteractionGeometry(
+    entityId: string,
+    transform: Transform,
+    dimensions: Dimensions,
+  ): boolean
   commitInteraction(): boolean
   cancelInteraction(): boolean
   setLeftTab(tab: LeftTab): void
@@ -146,6 +154,24 @@ function clone<T>(value: T): T {
   return structuredClone(value)
 }
 
+function startResizeEvidencePhase(phase: string): number | null {
+  if (typeof window === 'undefined') return null
+  return (
+    window as typeof window & {
+      __apartmentEvidenceProbe?: { startPhase: (name: string) => number | null }
+    }
+  ).__apartmentEvidenceProbe?.startPhase(phase) ?? null
+}
+
+function endResizeEvidencePhase(token: number | null): void {
+  if (typeof window === 'undefined') return
+  ;(
+    window as typeof window & {
+      __apartmentEvidenceProbe?: { endPhase: (value: number | null) => void }
+    }
+  ).__apartmentEvidenceProbe?.endPhase(token)
+}
+
 function freezeDeep<T>(value: T): T {
   if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
     for (const child of Object.values(value)) freezeDeep(child)
@@ -158,6 +184,66 @@ function validDimensions(dimensions: Dimensions): boolean {
   return Object.values(dimensions).every((value) => Number.isFinite(value) && value > 0)
 }
 
+interface RendererDraftTarget {
+  readonly position: { x: number; y: number; z: number }
+  readonly rotation: { x: number; y: number; z: number }
+  readonly scale: { x: number; y: number; z: number }
+}
+
+interface RendererDraftState {
+  readonly target: RendererDraftTarget
+  readonly onCancel: () => void
+  readonly initial: {
+    readonly position: Vector3
+    readonly rotation: Vector3
+    readonly scale: Vector3
+  }
+}
+
+function isRendererDraftRegistration(
+  value: unknown,
+): value is { readonly target: RendererDraftTarget; readonly onCancel: () => void } {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as {
+    readonly target?: Partial<RendererDraftTarget>
+    readonly onCancel?: unknown
+  }
+  const target = candidate.target
+  return (
+    typeof candidate.onCancel === 'function' &&
+    [target?.position, target?.rotation, target?.scale].every(
+    (vector) =>
+      vector &&
+      Number.isFinite(vector.x) &&
+      Number.isFinite(vector.y) &&
+      Number.isFinite(vector.z),
+    )
+  )
+}
+
+function captureRendererDraft(
+  target: RendererDraftTarget,
+  onCancel: () => void,
+): RendererDraftState {
+  return {
+    target,
+    onCancel,
+    initial: {
+      position: { ...target.position },
+      rotation: { ...target.rotation },
+      scale: { ...target.scale },
+    },
+  }
+}
+
+function restoreRendererDraft(draft: RendererDraftState | undefined): void {
+  if (!draft) return
+  Object.assign(draft.target.position, draft.initial.position)
+  Object.assign(draft.target.rotation, draft.initial.rotation)
+  Object.assign(draft.target.scale, draft.initial.scale)
+  draft.onCancel()
+}
+
 function dimensionsForEntity(dimensions: Dimensions): JsonObject {
   return { dimensions: clone(dimensions) as unknown as JsonObject }
 }
@@ -166,7 +252,9 @@ function makeSnapshot(
   scene: SceneDocument,
   rest: Omit<EditorSnapshot, 'scene'>,
 ): EditorSnapshot {
-  const sceneCopy = freezeDeep(clone(scene))
+  // CommandStore.scene is already an isolated clone; freezing that value avoids
+  // cloning the complete scene a second time during interaction publication.
+  const sceneCopy = freezeDeep(scene)
   const selectedEntityIds = Object.freeze([...rest.selectedEntityIds])
   const outOfBoundsEntityIds = Object.freeze([...rest.outOfBoundsEntityIds])
   const saveStatus = freezeDeep(clone(rest.saveStatus))
@@ -209,6 +297,8 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       now: options.now ?? (() => new Date().toISOString()),
     })
   let commandStore = createCommandStore(initialScene, { idFactory })
+  let rendererDraft: RendererDraftState | undefined
+  let resizeEvidenceInteraction = false
   let suppressAutosaveStatus = false
   let publishStatus: (status: AutosaveStatus) => void = () => undefined
   const autosave =
@@ -236,6 +326,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     outOfBoundsEntityIds: findOutOfBoundsEntityIds(commandStore.scene),
     canUndo: false,
     canRedo: false,
+    interactionActive: false,
     saveStatus: autosave?.getStatus() ?? { state: 'idle' },
     activeLeftTab: 'catalog',
     mobilePanel: 'none',
@@ -268,8 +359,8 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
           : [selectedEntityId, ...selectedEntityIds]
         : [],
       outOfBoundsEntityIds: findOutOfBoundsEntityIds(scene),
-      canUndo: commandStore.history.undo.length > 0,
-      canRedo: commandStore.history.redo.length > 0,
+      canUndo: commandStore.canUndo,
+      canRedo: commandStore.canRedo,
       saveStatus: saveStatus ?? autosave?.getStatus() ?? snapshot.saveStatus,
       ...(errorMessage === undefined ? {} : { errorMessage }),
     })
@@ -277,10 +368,20 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
   }
   publishStatus = (status) => publish(undefined, status)
 
+  const discardInteraction = (): boolean => {
+    if (!commandStore.activeInteraction) return false
+    commandStore.cancelInteraction()
+    restoreRendererDraft(rendererDraft)
+    rendererDraft = undefined
+    snapshot = { ...snapshot, interactionActive: false }
+    return true
+  }
+
   const sceneAction = (
     command: SceneCommand,
     afterExecute?: (scene: SceneDocument) => void,
   ): boolean => {
+    discardInteraction()
     const before = commandStore.scene
     try {
       commandStore.execute(command)
@@ -360,6 +461,31 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     return { type: 'set-catalog', entityId: entity.id, catalog, overrides }
   }
 
+  const catalogCustomGeometryCommand = (
+    entity: Entity,
+    transform: Transform,
+    dimensions: Dimensions,
+  ): SceneCommand | undefined => {
+    if (!validDimensions(dimensions)) return undefined
+    if (!entity.catalog)
+      return {
+        type: 'set-entity-geometry',
+        entityId: entity.id,
+        transform: clone(transform),
+        dimensions: clone(dimensions),
+      }
+    const custom = catalogCustomDimensionsCommand(entity, dimensions)
+    if (!custom || custom.type !== 'set-catalog' || !custom.catalog) return undefined
+    return {
+      type: 'set-entity-geometry',
+      entityId: entity.id,
+      transform: clone(transform),
+      dimensions: clone(dimensions),
+      catalog: custom.catalog,
+      overrides: custom.overrides,
+    }
+  }
+
   const cableEnd = (scene: SceneDocument, cableId: string, portId: string) => {
     const cable = scene.entities.find((entity) => entity.id === cableId)
     const endpoint = { entityId: cableId, portId }
@@ -381,6 +507,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
   }
 
   const replaceScene = (scene: SceneDocument, save = true): boolean => {
+    discardInteraction()
     commandStore = createCommandStore(scene, { idFactory })
     snapshot = {
       ...snapshot,
@@ -388,6 +515,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       primarySelectionId: null,
       selectedEntityIds: [],
       cableDraft: undefined,
+      interactionActive: false,
       errorMessage: undefined,
     }
     if (save) {
@@ -410,6 +538,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       return () => listeners.delete(listener)
     },
     selectRoom() {
+      discardInteraction()
       deletedSelectionId = null
       snapshot = {
         ...snapshot,
@@ -422,6 +551,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     },
     selectEntity(entityId, additive = false) {
       if (!commandStore.scene.entities.some((entity) => entity.id === entityId)) return
+      discardInteraction()
       deletedSelectionId = null
       const selectedEntityIds = additive
         ? snapshot.selectedEntityIds.includes(entityId)
@@ -573,6 +703,14 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       const command = catalogCustomDimensionsCommand(entity, dimensions)
       return command ? sceneAction(command) : false
     },
+    placeEntity(entityId, placement) {
+      if (
+        snapshot.mode !== 'edit' ||
+        !isPlacementEntityEligible(commandStore.scene, entityId)
+      )
+        return false
+      return sceneAction({ type: 'place-entity', entityId, placement })
+    },
     resetCatalogOverride(entityId, key) {
       const entity = commandStore.scene.entities.find(
         (candidate) => candidate.id === entityId,
@@ -664,8 +802,12 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     },
     undo() {
       try {
+        const discarded = discardInteraction()
         const changed = commandStore.undo()
-        if (!changed) return false
+        if (!changed) {
+          if (discarded) publish()
+          return false
+        }
         suppressAutosaveStatus = true
         try {
           autosave?.schedule(commandStore.scene)
@@ -693,8 +835,12 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     },
     redo() {
       try {
+        const discarded = discardInteraction()
         const changed = commandStore.redo()
-        if (!changed) return false
+        if (!changed) {
+          if (discarded) publish()
+          return false
+        }
         suppressAutosaveStatus = true
         try {
           autosave?.schedule(commandStore.scene)
@@ -709,10 +855,18 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       }
     },
     setMode(mode) {
-      snapshot = { ...snapshot, mode, cableDraft: undefined, errorMessage: undefined }
+      discardInteraction()
+      snapshot = {
+        ...snapshot,
+        mode,
+        cableDraft: undefined,
+        mobilePanel: mode === 'preview' ? 'none' : snapshot.mobilePanel,
+        errorMessage: undefined,
+      }
       publish()
     },
     setActiveTool(activeTool) {
+      discardInteraction()
       snapshot = { ...snapshot, activeTool, errorMessage: undefined }
       publish()
     },
@@ -898,9 +1052,31 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     beginInteraction(label, target) {
       if (snapshot.mode !== 'edit' || commandStore.activeInteraction) return false
       try {
-        commandStore.beginInteraction(label, target)
+        resizeEvidenceInteraction = label === 'resize entity'
+        rendererDraft = isRendererDraftRegistration(target)
+          ? captureRendererDraft(target.target, target.onCancel)
+          : undefined
+        const transactionPhase = resizeEvidenceInteraction
+          ? startResizeEvidencePhase('resize-transaction')
+          : null
+        try {
+          commandStore.beginInteraction(label, rendererDraft ? undefined : target)
+        } finally {
+          endResizeEvidencePhase(transactionPhase)
+        }
+        snapshot = { ...snapshot, interactionActive: true, errorMessage: undefined }
+        const publishPhase = resizeEvidenceInteraction
+          ? startResizeEvidencePhase('resize-begin-publish')
+          : null
+        try {
+          publish()
+        } finally {
+          endResizeEvidencePhase(publishPhase)
+        }
         return true
       } catch (error) {
+        resizeEvidenceInteraction = false
+        rendererDraft = undefined
         publish(
           error instanceof Error ? error.message : 'Unable to begin the interaction.',
         )
@@ -925,20 +1101,62 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
         : { type: 'set-dimensions' as const, entityId, dimensions: clone(dimensions) }
       return command ? interactionAction(command) : false
     },
+    updateInteractionGeometry(entityId, transform, dimensions) {
+      if (!validDimensions(dimensions)) return false
+      const entity = commandStore.scene.entities.find(
+        (candidate) => candidate.id === entityId,
+      )
+      const command = entity
+        ? catalogCustomGeometryCommand(entity, transform, dimensions)
+        : undefined
+      if (!command) return false
+      try {
+        commandStore.updateInteraction(command)
+        return true
+      } catch (error) {
+        publish(
+          error instanceof Error ? error.message : 'Unable to finalize the interaction.',
+        )
+        return false
+      }
+    },
     commitInteraction() {
       try {
-        const changed = commandStore.commitInteraction()
+        const historyPhase = resizeEvidenceInteraction
+          ? startResizeEvidencePhase('resize-history')
+          : null
+        let changed: boolean
+        try {
+          changed = commandStore.commitInteraction()
+        } finally {
+          endResizeEvidencePhase(historyPhase)
+        }
+        rendererDraft = undefined
+        snapshot = { ...snapshot, interactionActive: false }
         if (changed) {
           suppressAutosaveStatus = true
+          const autosavePhase = resizeEvidenceInteraction
+            ? startResizeEvidencePhase('resize-autosave-schedule')
+            : null
           try {
             autosave?.schedule(commandStore.scene)
           } finally {
+            endResizeEvidencePhase(autosavePhase)
             suppressAutosaveStatus = false
           }
         }
-        publish()
+        const publishPhase = resizeEvidenceInteraction
+          ? startResizeEvidencePhase('resize-commit-publish')
+          : null
+        try {
+          publish()
+        } finally {
+          endResizeEvidencePhase(publishPhase)
+        }
+        resizeEvidenceInteraction = false
         return changed
       } catch (error) {
+        resizeEvidenceInteraction = false
         publish(
           error instanceof Error ? error.message : 'Unable to commit the interaction.',
         )
@@ -947,7 +1165,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
     },
     cancelInteraction() {
       try {
-        const cancelled = commandStore.cancelInteraction()
+        const cancelled = discardInteraction()
         publish()
         return cancelled
       } catch (error) {
@@ -997,6 +1215,7 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       publish()
     },
     dispose() {
+      discardInteraction()
       autosave?.dispose()
       listeners.clear()
     },
@@ -1067,6 +1286,9 @@ export class EditorStoreClass implements EditorStore {
   }
   setCatalogCustomDimensions(entityId: string, dimensions: Dimensions) {
     return this.delegate.setCatalogCustomDimensions(entityId, dimensions)
+  }
+  placeEntity(entityId: string, placement: PlacementAction) {
+    return this.delegate.placeEntity(entityId, placement)
   }
   resetCatalogOverride(entityId: string, key?: string) {
     return this.delegate.resetCatalogOverride(entityId, key)
@@ -1152,6 +1374,13 @@ export class EditorStoreClass implements EditorStore {
   }
   updateInteractionDimensions(entityId: string, dimensions: Dimensions) {
     return this.delegate.updateInteractionDimensions(entityId, dimensions)
+  }
+  updateInteractionGeometry(
+    entityId: string,
+    transform: Transform,
+    dimensions: Dimensions,
+  ) {
+    return this.delegate.updateInteractionGeometry(entityId, transform, dimensions)
   }
   commitInteraction() {
     return this.delegate.commitInteraction()

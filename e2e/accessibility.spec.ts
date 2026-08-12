@@ -84,15 +84,15 @@ test('keyboard-only controls follow focus order and Escape cancels a real cable 
   await page.goto('/')
   await expectNoSeriousOrCritical(page)
 
-  const preview = page.getByRole('button', { name: 'プレビュー' })
+  const preview = page.getByRole('button', { name: '高品質プレビュー', exact: true })
   expect(await tabUntilActive(page, preview)).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
   await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
     'data-renderer-profile',
     'preview',
   )
-  const edit = page.getByRole('button', { name: '編集' })
-  expect(await tabUntilActive(page, edit, 'backward')).toBe(1)
+  const edit = page.getByRole('button', { name: '編集に戻る', exact: true })
+  await tabUntilActive(page, edit, 'backward')
   await page.keyboard.press('Enter')
 
   const addDesk = page.getByTestId('catalog-add-desk.l-shaped-sit-stand')

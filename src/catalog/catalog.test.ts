@@ -306,4 +306,31 @@ describe('generic catalog', () => {
       )
     }
   })
+
+  it('resolves optional placement profiles without changing canonical entities', () => {
+    const monitor = resolveCatalogInstance(templateEntity('display.monitor'))
+    const desk = resolveCatalogInstance(templateEntity('desk.l-shaped-sit-stand'))
+    const cabinet = resolveCatalogInstance(templateEntity('storage.shelf-cabinet'))
+    const plain = resolveCatalogInstance(templateEntity('computer.mac'))
+
+    expect(monitor.placement).toMatchObject({
+      contactPlane: 'bottom',
+      allowedTargetClasses: ['floor', 'support-surface'],
+      preferredTargetClass: 'support-surface',
+    })
+    expect(desk.placement.supportSurfaces.map((surface) => surface.id)).toEqual([
+      'main-top',
+      'return-top',
+    ])
+    expect(cabinet.placement.supportSurfaces[0]).toMatchObject({
+      id: 'interior-shelf-low',
+      usableClearanceHeight: expect.any(Number),
+    })
+    expect(plain.placement).toMatchObject({
+      allowedTargetClasses: ['floor'],
+      preferredTargetClass: 'floor',
+      supportSurfaces: [],
+    })
+    expect(templateEntity('desk.l-shaped-sit-stand')).not.toHaveProperty('placement')
+  })
 })

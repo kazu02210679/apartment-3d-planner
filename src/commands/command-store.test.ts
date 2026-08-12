@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createCommandStore, type SceneCommand } from './command-store'
+import { SceneHistory } from './history'
 import { createEmptyScene } from '../domain/scene'
 import { normalizeScene } from '../domain/normalize'
 import type { Entity, SceneDocument } from '../domain/schema'
@@ -59,6 +60,23 @@ function expectWorldTransformClose(
 }
 
 describe('CommandStore', () => {
+  it('exposes undo and redo availability without reading a complete history snapshot', () => {
+    const store = createCommandStore(scene(), { idFactory: ids() })
+    const snapshot = vi.spyOn(SceneHistory.prototype, 'snapshot')
+
+    expect(store.canUndo).toBe(false)
+    expect(store.canRedo).toBe(false)
+    store.execute({ type: 'resize-room', dimensions: { width: 2800, depth: 2800, height: 2400 } })
+    expect(store.canUndo).toBe(true)
+    expect(store.canRedo).toBe(false)
+    expect(snapshot).not.toHaveBeenCalled()
+
+    expect(store.undo()).toBe(true)
+    expect(store.canUndo).toBe(false)
+    expect(store.canRedo).toBe(true)
+    expect(snapshot).not.toHaveBeenCalled()
+  })
+
   it('updates cable routing and free-end positions through bounded persistent commands', () => {
     const initial = scene()
     const store = createCommandStore(initial, { idFactory: ids() })

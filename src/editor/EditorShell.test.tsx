@@ -25,6 +25,26 @@ function createStore() {
 }
 
 describe('EditorShell', () => {
+  it('makes live high-quality preview read-only and keeps the canonical export unchanged', () => {
+    const store = createStore()
+    render(<EditorShell store={store} />)
+    const before = store.exportJson()
+
+    fireEvent.click(screen.getByRole('button', { name: '高品質プレビュー' }))
+
+    expect(screen.getByText('高品質プレビュー')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '編集に戻る' })).toBeInTheDocument()
+    expect(screen.queryByRole('complementary', { name: 'シーンパネル' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('complementary', { name: 'プロパティパネル' })).not.toBeInTheDocument()
+    expect(store.getSnapshot().mode).toBe('preview')
+    expect(store.exportJson()).toBe(before)
+
+    fireEvent.click(screen.getByRole('button', { name: '編集に戻る' }))
+    expect(screen.getByRole('button', { name: '高品質プレビュー' })).toBeInTheDocument()
+    expect(store.getSnapshot().mode).toBe('edit')
+    expect(store.exportJson()).toBe(before)
+  })
+
   it('uses only the real canvas surface instead of legacy stage controls and entities', async () => {
     const store = createEditorStore()
     const { container } = render(<EditorShell store={store} />)
@@ -97,6 +117,25 @@ describe('EditorShell', () => {
         .dimensions.width,
     ).toBe(before)
     expect(screen.getByText('正の数値を入力してください。')).toBeInTheDocument()
+  })
+
+  it('keeps inspector numeric fields at committed values while a pointer draft is active', () => {
+    const store = createStore()
+    render(<EditorShell store={store} />)
+    fireEvent.click(screen.getByTestId('catalog-add-display.monitor'))
+    const position = screen.getByTestId('position-x')
+
+    let started = false
+    act(() => {
+      started = store.beginInteraction('move entity', {
+        entityId: store.getSnapshot().selectedEntityId,
+      })
+    })
+    expect(started).toBe(true)
+    expect(position).toHaveValue(0)
+
+    act(() => store.cancelInteraction())
+    expect(position).toHaveValue(0)
   })
 
   it('edits a stable outliner selection numerically and restores it with undo', () => {

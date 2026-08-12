@@ -26,18 +26,29 @@ export function ScreenPlaceholder({
     <group position={position}>
       <mesh>
         <planeGeometry args={[width, height]} />
-        <meshBasicMaterial color="#111a29" />
+        <meshStandardMaterial
+          color="#111a29"
+          emissive="#18324d"
+          emissiveIntensity={0.28}
+          roughness={0.42}
+          metalness={0.08}
+        />
       </mesh>
       {[-0.3, 0, 0.3].map((offset, index) => (
         <mesh key={offset} position={[offset * width, height * 0.18, 0.001]}>
           <planeGeometry args={[width * 0.22, tileHeight]} />
-          <meshBasicMaterial color={index === 1 ? accent : '#25344b'} />
+          <meshStandardMaterial
+            color={index === 1 ? accent : '#25344b'}
+            emissive={index === 1 ? accent : '#15263a'}
+            emissiveIntensity={index === 1 ? 0.18 : 0.08}
+            roughness={0.5}
+          />
         </mesh>
       ))}
       {[-0.18, -0.32].map((offset) => (
         <mesh key={offset} position={[-width * 0.12, offset * height, 0.001]}>
           <planeGeometry args={[width * 0.55, height * 0.045]} />
-          <meshBasicMaterial color="#657895" />
+          <meshStandardMaterial color="#657895" roughness={0.52} />
         </mesh>
       ))}
     </group>
