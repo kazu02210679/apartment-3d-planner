@@ -1,48 +1,39 @@
-# 暮らしの3Dプランナー v1レビュー改善 — 現時点のローカル検証ステータス
+# 暮らしの3Dプランナー v1レビュー改善: 現時点の検証ステータス
 
-product baseline `ad7b946`、verification harness/status baseline `d3c1b80`、および各検証結果の対象を区別して記録する。これは完了宣言ではない。
+product candidate `88ecbd52cae1166fb68a661e4535348d45232c0a` を対象に記録する。これは完了宣言ではない。
 
 ## Provenance境界
 
-- product baseline: `ad7b946`。
-- verification harness/status baseline: `d3c1b80`。
-- evidence run against product baseline: `ad7b946`。
-- functional CI against full tree: `d3c1b80` / GitHub Actions run `31625594080`。
+- product candidate: `88ecbd52cae1166fb68a661e4535348d45232c0a`。
+- verification harness/evidence input の full-tree SHA: `88ecbd52cae1166fb68a661e4535348d45232c0a`。
+- evidence spec 自体は `9d3a985` 由来だが、実行対象の full tree SHA は `88ecbd52cae1166fb68a661e4535348d45232c0a`。
+- functional CI remote は旧 `9d3a985` の GitHub Actions run `31641147799` が success。`88ecbd52cae1166fb68a661e4535348d45232c0a` は未pushで、remote CIは未実行。
 
-## Functional CI
+## Local functional verification
 
-- Ubuntu functional CI は `16/16 PASS`、retryなし、median `215.2ms`。
-- unit は `36 files / 232 tests`、build等は `PASS`。
+- focused verification: `28/28 PASS`。
+- full unit: `36 files / 239 tests`。
+- typecheck、lint、format、check:repo、build: `PASS`。
+- headed normal E2E: `16/16 PASS`、retryなし、median `71.2 ms`。
+- build: `661 modules`、entry `352.03 kB`、`SceneCanvas` `1000.90 kB`。既知の `>500 kB` warningあり。
 
-## ローカル検証
+## Strict headed Windows evidence
 
-- verification harness/status baseline `d3c1b80` の `e2e/performance.spec.ts` は、131-entity負荷のbenchmarkとroundtripに分割している。`createPerformanceScene(100)` は固定31 entityに100 entityを追加するため総数131であり、100-entity acceptanceの主張ではない。
-- `retries=0` で対象 spec を4回連続実行し、各回 `2 PASS`。4回目はSol独立実行で22.9秒、中央値87.3ms。
-- 通常E2E全体は `16 PASS`。
-- 実行環境は Windows 11 / Node 22.22 / headed Chromium 151。Linux strict evidenceは未取得である。
+`14 tests` 中 `10 PASS / 4 FAIL`、retryなし。
 
-## Evidence run against product baseline `ad7b946`
-
-13件中 `6 PASS / 7 FAIL`、`flaky 0`。
-
-| 対象   | 判定   | 確認結果                                                                                                                                                                                               |
-| ------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| AC-007 | `FAIL` | resize max `17.3 > 16`、frame p95 `33.4 > 25`、Long Tasksあり。transformもLong Tasksあり。attributed p95 `49.9 > 25`。pairedは30s timeout。                                                            |
-| AC-008 | `FAIL` | stable/commit count は一部PASS。restore `314.4 > 250`、`escape-cancel-preserves-canonical-state` witness失敗、cancel/autosave witness、orbit p95 `33.3 > 25`。                                         |
-| AC-019 | `FAIL` | 100-entity evidence fixture / zero writes / runtime はPASS。p95 `50.1 > 25`、Long Tasks `20 > 1`、tier selectorなし。                                                                                  |
-| AC-022 | `FAIL` | warning `6`（Three.Clock deprecation `1`、PCFSoftShadowMap deprecation `1`、GPU ReadPixels stall `4`）。console errors、page errors、failed requests、missing assets、shader、unhandled はすべて `0`。 |
+| 対象   | 判定         | 確認結果                                                                                                                                                                                                                                                                                                                          |
+| ------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-007 | `FAIL`       | resize handler p95 `0.1 ms` / max `8.4 ms`、frame p95 `18.9 ms`、Long Tasksは `>50 ms: 1`、`>100 ms: 1`、max `252 ms`。transform handler p95 `0.1 ms` / max `8.8 ms`、frame p95 `12.5 ms`、Long Tasksは `>50 ms: 2`、`>100 ms: 1`、max `106 ms`。paired frame p95 `25 ms`、Long Tasksは `>50 ms: 2`、`>100 ms: 1`、max `140 ms`。 |
+| AC-008 | `FAIL`       | focused selection testはPASS。OrbitもPASS（frame p95 `25 ms`、Long Tasks `0`、canonical writes `0`）。five-commit median `65.1 ms > 50 ms`、cancel witnessの`selectionStable`は`false`、direct autosave scheduleはunavailable。                                                                                                   |
+| AC-019 | `UNRESOLVED` | exact 100-entity、frame p95 `25 ms`、Long Tasks `0`、canonical unchanged / zero writesはPASS。deterministic High/Balanced/Safe tier matrixのみ未解決。                                                                                                                                                                            |
+| AC-022 | `FAIL`       | errors、page errors、rejections、failed requests、missing assets、shader errorsはすべて `0`。warnings `2`: `THREE.Clock` deprecation と `PCFSoftShadowMap` deprecation。                                                                                                                                                          |
 
 ## 未解決事項とGPC
 
-- Linux strict evidenceは未取得。Ubuntu functional CIとは別の証拠境界である。
-- GPC は `BLOCKED`、`round2`、`REVIEW_REPEATED_BLOCKER`。required は `PROVIDE_EVIDENCE`、`final-verify` は未実施である。
-- 同一controllerでの retry / reset / bypass はない。
-- `event.delta` へは戻していない。
-
-raw / traces / summary は ignored local evidence として保持し、commit対象外とする。traceは約134.9MBを含む。
+- Linux strict evidenceはWSL `E_ACCESSDENIED`のままUNRESOLVED。Windows headed evidenceやfunctional CIとは別の証拠境界である。
+- GPCは `BLOCKED`、`round2`、`REVIEW_REPEATED_BLOCKER`。`final-verify`は未実施で、retry / reset / bypassはない。
+- raw / traces / summary はignored local evidenceであり、commit対象外とする。
 
 ## Release判定
 
-merge、deploy、GitHub Pagesの変更はない。`main` mergeは公開につながるため、release判定は `NO / FIX-FIRST` とする。
-
-これは完了宣言ではない。
+release判定は `NO / FIX-FIRST` とする。完了宣言やmerge可の判断はしていない。
