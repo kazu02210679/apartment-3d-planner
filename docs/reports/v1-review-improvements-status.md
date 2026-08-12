@@ -7,7 +7,8 @@ product candidate `88ecbd52cae1166fb68a661e4535348d45232c0a` を対象に記録�
 - product candidate: `88ecbd52cae1166fb68a661e4535348d45232c0a`。
 - verification harness/evidence input の full-tree SHA: `88ecbd52cae1166fb68a661e4535348d45232c0a`。
 - evidence spec 自体は `9d3a985` 由来だが、実行対象の full tree SHA は `88ecbd52cae1166fb68a661e4535348d45232c0a`。
-- functional CI remote は旧 `9d3a985` の GitHub Actions run `31641147799` が success。`88ecbd52cae1166fb68a661e4535348d45232c0a` は未pushで、remote CIは未実行。
+- functional CI remote は full-tree `5cd58c4e8e9b742e266dca3094f2607afe38af61`（product code は product candidate `88ecbd52cae1166fb68a661e4535348d45232c0a` と同一、旧status docsを含む）に対する GitHub Actions run `31646612283` が success（verify全成功、deployはfeature branchのためskip）。現在stagedのP2 test/manifest追補は次commitのためこのrunには含まれず、そのremote CIは未実行。
+- tracked evidence manifest: [`v1-review-improvements-evidence-manifest.json`](./v1-review-improvements-evidence-manifest.json)。raw/traces/summary 本体は引き続きignoredで、manifestには実行条件・集計値・相対ファイル名・SHA-256 digestのみを記録する。
 
 ## Local functional verification
 

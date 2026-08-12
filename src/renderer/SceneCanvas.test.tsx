@@ -1,19 +1,32 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import type { EventManager, RootState, RootStore } from '@react-three/fiber'
+import { Mesh, type Intersection } from 'three'
+
+const canvasTestState = vi.hoisted(() => ({
+  eventsProp: undefined as unknown,
+  createPointerEvents: vi.fn(),
+  baseEventFilter: vi.fn(),
+}))
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({
     children,
+    events,
     onPointerMissed,
   }: {
     readonly children: React.ReactNode
+    readonly events?: unknown
     readonly onPointerMissed?: () => void
-  }) => (
-    <div data-testid="r3f-canvas" onClick={onPointerMissed}>
-      {children}
-    </div>
-  ),
-  events: () => ({ enabled: true, priority: 1 }),
+  }) => {
+    canvasTestState.eventsProp = events
+    return (
+      <div data-testid="r3f-canvas" onClick={onPointerMissed}>
+        {children}
+      </div>
+    )
+  },
+  events: canvasTestState.createPointerEvents,
   useThree: () => ({
     scene: { name: 'scene-canvas-test-scene' },
     camera: { name: 'scene-canvas-test-camera' },
@@ -42,6 +55,83 @@ import { createEmptyScene } from '../domain/scene'
 import { SceneCanvas } from './SceneCanvas'
 
 describe('SceneCanvas', () => {
+  it('installs and executes the production resize-handle event factory at the Canvas seam', () => {
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami'),
+    })
+    const rootStore = {} as RootStore
+    const rootState = {} as RootState
+    const nearEntity = new Mesh()
+    const firstHandleObject = new Mesh()
+    firstHandleObject.userData.resizeHandle = true
+    const farEntity = new Mesh()
+    const secondHandleObject = new Mesh()
+    secondHandleObject.userData.resizeHandle = true
+    const nearEntityHit = { distance: 2, object: nearEntity } as unknown as Intersection
+    const firstHandleHit = {
+      distance: 7,
+      object: firstHandleObject,
+    } as unknown as Intersection
+    const farEntityHit = { distance: 11, object: farEntity } as unknown as Intersection
+    const secondHandleHit = {
+      distance: 17,
+      object: secondHandleObject,
+    } as unknown as Intersection
+    const intersections = [nearEntityHit, firstHandleHit, farEntityHit, secondHandleHit]
+    const originalIntersections = [...intersections]
+    const baseFilteredIntersections = [
+      farEntityHit,
+      secondHandleHit,
+      nearEntityHit,
+      firstHandleHit,
+    ]
+    let receivedByBaseFilter: Intersection[] | undefined
+    canvasTestState.eventsProp = undefined
+    canvasTestState.baseEventFilter.mockReset()
+    canvasTestState.createPointerEvents.mockReset()
+    canvasTestState.baseEventFilter.mockImplementation(
+      (items: Intersection[], state: RootState) => {
+        receivedByBaseFilter = items
+        expect(state).toBe(rootState)
+        return baseFilteredIntersections
+      },
+    )
+    canvasTestState.createPointerEvents.mockReturnValue({
+      enabled: true,
+      priority: 1,
+      filter: canvasTestState.baseEventFilter,
+    })
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+
+    expect(canvasTestState.eventsProp).toEqual(expect.any(Function))
+    const eventsFactory = canvasTestState.eventsProp as (
+      store: RootStore,
+    ) => EventManager<HTMLElement>
+    const eventManager = eventsFactory(rootStore)
+    const filteredIntersections = eventManager.filter!(intersections, rootState)
+
+    expect(canvasTestState.createPointerEvents).toHaveBeenCalledWith(rootStore)
+    expect(canvasTestState.baseEventFilter).toHaveBeenCalledTimes(1)
+    expect(receivedByBaseFilter).not.toBe(intersections)
+    expect(receivedByBaseFilter).toEqual(originalIntersections)
+    expect(filteredIntersections).toEqual([
+      secondHandleHit,
+      firstHandleHit,
+      farEntityHit,
+      nearEntityHit,
+    ])
+    expect(filteredIntersections.map(({ distance }) => distance)).toEqual([17, 7, 11, 2])
+    expect(filteredIntersections.map(({ object }) => object)).toEqual([
+      secondHandleObject,
+      firstHandleObject,
+      farEntity,
+      nearEntity,
+    ])
+    expect(intersections).toEqual(originalIntersections)
+    expect(intersections).not.toBe(filteredIntersections)
+  })
+
   it('keeps renderer evidence dormant unless the exact query switch is enabled', () => {
     let id = 0
     const store = createEditorStore({

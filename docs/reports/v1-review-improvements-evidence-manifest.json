@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "manifestType": "v1-review-improvements-evidence-provenance",
+  "repository": "apartment-3d-planner",
+  "candidate": {
+    "sha": "88ecbd52cae1166fb68a661e4535348d45232c0a"
+  },
+  "provenance": {
+    "executionDate": "2026-08-13",
+    "timezone": "Asia/Tokyo"
+  },
+  "execution": {
+    "normalE2ECommand": "npm.cmd run test:e2e -- --headed",
+    "strictEvidenceCommand": "npm.cmd run test:e2e:evidence -- --headed",
+    "buildAndServeCommand": "npm.cmd run build && tsx scripts/serve-dist.ts",
+    "retries": 0
+  },
+  "environment": {
+    "os": "Windows 11",
+    "node": "22.22.0",
+    "browser": "Chromium 151.0.7922.34",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    }
+  },
+  "normalVerification": {
+    "focused": {
+      "passed": 28,
+      "total": 28
+    },
+    "fullUnit": {
+      "files": 36,
+      "tests": 239
+    },
+    "checks": {
+      "typecheck": "PASS",
+      "lint": "PASS",
+      "format": "PASS",
+      "checkRepo": "PASS",
+      "build": "PASS"
+    },
+    "headedE2E": {
+      "passed": 16,
+      "total": 16,
+      "retries": 0,
+      "medianMs": 71.2
+    },
+    "build": {
+      "modules": 661,
+      "entryKb": 352.03,
+      "sceneCanvasKb": 1000.9,
+      "knownWarnings": [">500 kB bundle warning"]
+    }
+  },
+  "strictVerification": {
+    "tests": {
+      "total": 14,
+      "passed": 10,
+      "failed": 4,
+      "retries": 0
+    },
+    "acceptanceCriteria": [
+      {
+        "id": "AC-007",
+        "status": "FAIL",
+        "resize": {
+          "handlerP95Ms": 0.1,
+          "handlerMaxMs": 8.4,
+          "frameP95Ms": 18.9,
+          "longTasksOver50Ms": 1,
+          "longTasksOver100Ms": 1,
+          "longTaskMaxMs": 252
+        },
+        "transform": {
+          "handlerP95Ms": 0.1,
+          "handlerMaxMs": 8.8,
+          "frameP95Ms": 12.5,
+          "longTasksOver50Ms": 2,
+          "longTasksOver100Ms": 1,
+          "longTaskMaxMs": 106
+        },
+        "pairedFrameP95Ms": 25,
+        "pairedLongTasksOver50Ms": 2,
+        "pairedLongTasksOver100Ms": 1,
+        "pairedLongTaskMaxMs": 140
+      },
+      {
+        "id": "AC-008",
+        "status": "FAIL",
+        "focusedSelection": "PASS",
+        "orbit": {
+          "status": "PASS",
+          "frameP95Ms": 25,
+          "longTasks": 0,
+          "canonicalWrites": 0
+        },
+        "fiveCommitMedianMs": 65.1,
+        "fiveCommitThresholdMs": 50,
+        "cancelSelectionStable": false,
+        "directAutosaveSchedule": "unavailable"
+      },
+      {
+        "id": "AC-019",
+        "status": "UNRESOLVED",
+        "exact100EntityFrameP95Ms": 25,
+        "longTasks": 0,
+        "canonicalUnchanged": "PASS",
+        "zeroWrites": "PASS",
+        "tierMatrix": "UNRESOLVED"
+      },
+      {
+        "id": "AC-022",
+        "status": "FAIL",
+        "zeroCountChecks": [
+          "errors",
+          "pageErrors",
+          "rejections",
+          "failedRequests",
+          "missingAssets",
+          "shaderErrors"
+        ],
+        "warnings": ["THREE.Clock deprecation", "PCFSoftShadowMap deprecation"]
+      }
+    ],
+    "wsl": {
+      "status": "UNRESOLVED",
+      "errorCode": "Wsl/Service/CreateInstance/E_ACCESSDENIED",
+      "summary": "Linux strict evidence remains unresolved; Windows headed evidence and functional CI are separate evidence boundaries."
+    }
+  },
+  "sourceSummaryArtifact": {
+    "path": "docs/reports/evidence/verification-summary.json",
+    "sha256": "f881bb957a3aaac932cad904d1e61edd0e3dbd2fa9b8e01c7bb35caeb37d57f4"
+  },
+  "sourceRawArtifacts": [
+    {
+      "path": "docs/reports/evidence/raw/ac-007-resize-5s.json",
+      "sha256": "8370a9fe7f17226a618a4ce45270a9db80dc5ef2f0332210b0783e14556a76d4"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-007-transform-5s.json",
+      "sha256": "b5358a914bc94a72f729192e8c9197a2bc22c7ecb191bf97049b8bcd634d8961"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-007-transform-attributed-5s.json",
+      "sha256": "a064400c6763c83d42e8b65dd87c5fd8fd8c0b0f03344330cd1c0f0402a96837"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-007-transform-paired-history.json",
+      "sha256": "6e7df2b3d728902e0a71a17afaef6a9d60825e6e9adcb24007b2fc888030a6e2"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-008-five-commit-series-attempt-1.json",
+      "sha256": "3b24ccad2e84b2b0c2d504901ca7d4502ec36f11cd7d7ee8ffdf4ac4c175c497"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-008-five-commit-series.json",
+      "sha256": "83c4851013c37eb6fc696d2d78c39b72a7655275a9be739535141c03b04e0bc4"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-008-orbit-5s.json",
+      "sha256": "1ef0e836a11e31e6a5c22f9f6bf4b1f9b5992de19badf6469f4fcb7c79582834"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-019-preview-100-entity.json",
+      "sha256": "32a9122854a920d8b89766bd4dc69eaf529153b5f38f4c8ed04a204285a88db1"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-022-browser-diagnostics.json",
+      "sha256": "eee107a21fc9f4f189a214a474c55c8a3dd5b5a35ee88310848554ed3e983d3d"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-022-wsl-readonly.json",
+      "sha256": "2fb71850aca4de6f41fd98104ff5d2810b2cb22898760c80880710cca66b1462"
+    }
+  ],
+  "sourceTraceArtifacts": [
+    {
+      "path": "docs/reports/evidence/traces/ac-007-transform-cdp.attribution.json",
+      "sha256": "cf0abd03d7d4801f45fdbb05bbab45eb704c8622a455ae205c11c49d6125f5b3"
+    },
+    {
+      "path": "docs/reports/evidence/traces/ac-007-transform-cdp.trace",
+      "sha256": "027dc7ce0e934e5cc2aee81e0b0eda4bb2d0ecd66f499754453dc6ebdeb7402d"
+    }
+  ],
+  "sourceDiagnosticArtifacts": [
+    {
+      "path": "docs/reports/evidence/diagnostics/ac-007-resize-diagnostic-1-update.json",
+      "sha256": "3a3d1cc130046dfbd828b95b62ae3dfdd5325d94ee6866e2c95b2182d20ed785"
+    },
+    {
+      "path": "docs/reports/evidence/diagnostics/ac-007-resize-diagnostic-fine-grained.json",
+      "sha256": "0aad551c481b0500205880aa1a2284d573ea930a8c3e20ab8914d0e66f5d2610"
+    },
+    {
+      "path": "docs/reports/evidence/diagnostics/ac-007-resize-diagnostic-fresh-1-update.json",
+      "sha256": "eeb91dd2b889a5747f7fc14bf5587ec56b9535fbcfcafdb947ff049149449a8f"
+    },
+    {
+      "path": "docs/reports/evidence/diagnostics/ac-007-resize-diagnostic-warmup.json",
+      "sha256": "cdd27c0787099985fcd03b47998ad55c25868a30ad514d00622c6b9f447dd451"
+    }
+  ]
+}
