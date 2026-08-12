@@ -1,4 +1,10 @@
-import { Canvas } from '@react-three/fiber'
+import {
+  Canvas,
+  events as createPointerEvents,
+  type EventManager,
+  type RootState,
+  type RootStore,
+} from '@react-three/fiber'
 import {
   Component,
   useCallback,
@@ -28,7 +34,9 @@ import {
 } from './quality'
 import { SceneRoot, type CameraIntent } from './SceneRoot'
 import { createInteractionController } from './controls/interaction-controller'
+import { prioritizeResizeHandleIntersections } from './controls/handle-raycast'
 import { toRendererTransform } from './adapters'
+import type { Intersection } from 'three'
 
 function useSnapshot(store: EditorStore) {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
@@ -52,6 +60,17 @@ class RendererErrorBoundary extends Component<
 interface SceneCanvasProps {
   readonly store: EditorStore
   readonly webglAvailable?: () => boolean
+}
+
+function createResizeHandleEvents(store: RootStore): EventManager<HTMLElement> {
+  const eventManager = createPointerEvents(store)
+  return {
+    ...eventManager,
+    filter: (items: Intersection[], state: RootState) =>
+      prioritizeResizeHandleIntersections(
+        eventManager.filter?.([...items], state) ?? items,
+      ),
+  }
 }
 
 export function SceneCanvas({
@@ -317,6 +336,7 @@ export function SceneCanvas({
             fallback={<FallbackPanel />}
             gl={{ antialias: profile.antialias, alpha: false }}
             shadows
+            events={createResizeHandleEvents}
             onPointerMissed={onCanvasPointerMissed}
           >
             {evidenceEnabled ? (

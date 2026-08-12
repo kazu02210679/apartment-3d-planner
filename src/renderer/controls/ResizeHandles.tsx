@@ -4,7 +4,6 @@ import type { Object3D } from 'three'
 import { toRendererDimensions } from '../adapters'
 import type { Dimensions } from '../../domain/schema'
 import type { InteractionController } from './interaction-controller'
-import { raycastHandleFirst } from './handle-raycast'
 
 interface ResizeHandlesProps {
   readonly entityId: string
@@ -266,7 +265,7 @@ export function ResizeHandles({
       key={name}
       name={name}
       position={position}
-      raycast={raycastHandleFirst}
+      userData={{ resizeHandle: true }}
       onPointerDown={begin(index)}
       onPointerMove={move}
       onPointerUp={finish}

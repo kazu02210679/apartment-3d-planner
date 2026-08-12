@@ -1,16 +1,17 @@
-import { Mesh, type Intersection, type Raycaster } from 'three'
+import type { Intersection } from 'three'
 
-const HANDLE_RAYCAST_PRIORITY_DISTANCE = -1
+/** Places real resize-handle hits before other hits without changing hit data. */
+export function prioritizeResizeHandleIntersections(
+  intersections: readonly Intersection[],
+): Intersection[] {
+  const resizeHandleHits: Intersection[] = []
+  const otherHits: Intersection[] = []
 
-/** Prioritizes real handle hits without fabricating intersections. */
-export function raycastHandleFirst(
-  this: Mesh,
-  raycaster: Raycaster,
-  intersections: Intersection[],
-): void {
-  const firstHandleIntersection = intersections.length
-  Mesh.prototype.raycast.call(this, raycaster, intersections)
-  for (let index = firstHandleIntersection; index < intersections.length; index += 1) {
-    intersections[index]!.distance = HANDLE_RAYCAST_PRIORITY_DISTANCE
+  for (const intersection of intersections) {
+    if (intersection.object.userData.resizeHandle === true)
+      resizeHandleHits.push(intersection)
+    else otherHits.push(intersection)
   }
+
+  return [...resizeHandleHits, ...otherHits]
 }

@@ -11,7 +11,7 @@ import {
 
 import type { InteractionController } from './interaction-controller'
 import { ResizeHandles } from './ResizeHandles'
-import { raycastHandleFirst } from './handle-raycast'
+import { prioritizeResizeHandleIntersections } from './handle-raycast'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -33,54 +33,75 @@ const identityObject = {
 } as unknown as Object3D
 
 describe('ResizeHandles', () => {
-  it('preserves existing intersections and rewrites only an actual handle hit', () => {
-    const handle = new Mesh(new BoxGeometry(0.045, 0.045, 0.045))
-    handle.position.z = -3
-    handle.updateMatrixWorld(true)
+  it('prioritizes marked handle hits without mutating intersections or input', () => {
+    const nearEntity = new Mesh()
+    const handleObject = new Mesh()
+    handleObject.userData.resizeHandle = true
+    const farEntity = new Mesh()
+    const nearEntityHit = { distance: 2, object: nearEntity } as unknown as Intersection
+    const handleHit = { distance: 7, object: handleObject } as unknown as Intersection
+    const farEntityHit = { distance: 11, object: farEntity } as unknown as Intersection
+    const intersections = [nearEntityHit, handleHit, farEntityHit]
+    const originalIntersections = [...intersections]
 
-    const existing = { distance: 42 } as Intersection
-    const intersections = [existing]
-    const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, -1))
+    const prioritized = prioritizeResizeHandleIntersections(intersections)
 
-    raycastHandleFirst.call(handle, raycaster, intersections)
-
-    expect(intersections[0]).toBe(existing)
-    expect(intersections[0]?.distance).toBe(42)
-    expect(intersections[1]?.object).toBe(handle)
-    expect(intersections[1]?.distance).toBe(-1)
+    expect(prioritized).not.toBe(intersections)
+    expect(prioritized).toEqual([handleHit, nearEntityHit, farEntityHit])
+    expect(prioritized[0]).toBe(handleHit)
+    expect(prioritized.map(({ distance }) => distance)).toEqual([7, 2, 11])
+    expect(prioritized.map(({ object }) => object)).toEqual([
+      handleObject,
+      nearEntity,
+      farEntity,
+    ])
+    expect(intersections).toEqual(originalIntersections)
+    expect(intersections.map(({ distance }) => distance)).toEqual([2, 7, 11])
+    expect(handleObject.userData).toEqual({ resizeHandle: true })
   })
 
-  it('preserves a miss without fabricating a handle intersection', () => {
+  it('preserves a handle miss without fabricating an intersection', () => {
     const handle = new Mesh(new BoxGeometry(0.045, 0.045, 0.045))
+    handle.userData.resizeHandle = true
     handle.position.set(1, 0, -3)
     handle.updateMatrixWorld(true)
 
-    const intersections: Intersection[] = []
     const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, -1))
+    const intersections = raycaster.intersectObject(handle)
 
-    raycastHandleFirst.call(handle, raycaster, intersections)
+    const prioritized = prioritizeResizeHandleIntersections(intersections)
 
+    expect(prioritized).toHaveLength(0)
     expect(intersections).toHaveLength(0)
   })
 
-  it('gives an actual handle hit deterministic priority over a nearer background entity', () => {
+  it('prioritizes an actual handle hit over a nearer entity without changing distances', () => {
     const background = new Mesh(new BoxGeometry(1, 1, 1))
     background.name = 'background-entity'
     background.position.z = -2
     const handle = new Mesh(new BoxGeometry(0.045, 0.045, 0.045))
     handle.name = 'resize-width-handle'
+    handle.userData.resizeHandle = true
     handle.position.z = -3
-    expect(raycastHandleFirst).toEqual(expect.any(Function))
-    handle.raycast = raycastHandleFirst
 
     background.updateMatrixWorld(true)
     handle.updateMatrixWorld(true)
 
     const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, -1))
     const intersections = raycaster.intersectObjects([background, handle])
+    const originalIntersections = [...intersections]
+    const originalHandleHits = intersections.filter(({ object }) => object === handle)
+    const originalEntityHits = intersections.filter(({ object }) => object === background)
+    const prioritized = prioritizeResizeHandleIntersections(intersections)
 
-    expect(intersections[0]?.object).toBe(handle)
-    expect(intersections[0]?.distance).toBe(-1)
+    expect(intersections[0]?.object).toBe(background)
+    expect(prioritized.slice(0, originalHandleHits.length)).toEqual(originalHandleHits)
+    expect(prioritized.slice(originalHandleHits.length)).toEqual(originalEntityHits)
+    expect(prioritized.map(({ distance }) => distance)).toEqual([
+      ...originalHandleHits.map(({ distance }) => distance),
+      ...originalEntityHits.map(({ distance }) => distance),
+    ])
+    expect(intersections).toEqual(originalIntersections)
     expect(handle.position.toArray()).toEqual([0, 0, -3])
     expect(intersections.some(({ object }) => object === background)).toBe(true)
   })
@@ -107,9 +128,10 @@ describe('ResizeHandles', () => {
         />,
       )
 
-      expect(
-        renderer.scene.findByProps({ name: 'resize-width-handle' }).props.position,
-      ).toEqual([0.5, 0, 0])
+      const widthHandle = renderer.scene.findByProps({ name: 'resize-width-handle' })
+      expect(widthHandle.props.position).toEqual([0.5, 0, 0])
+      expect(widthHandle.props.userData).toEqual({ resizeHandle: true })
+      expect(widthHandle.props.raycast).toBeUndefined()
       expect(
         renderer.scene.findByProps({ name: 'resize-height-handle' }).props.position,
       ).toEqual([0, 0.2, 0])

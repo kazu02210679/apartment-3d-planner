@@ -13,6 +13,7 @@ vi.mock('@react-three/fiber', () => ({
       {children}
     </div>
   ),
+  events: () => ({ enabled: true, priority: 1 }),
   useThree: () => ({
     scene: { name: 'scene-canvas-test-scene' },
     camera: { name: 'scene-canvas-test-camera' },
