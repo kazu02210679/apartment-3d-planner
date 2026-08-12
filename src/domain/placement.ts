@@ -204,7 +204,7 @@ function supportTargets(scene: SceneDocument, subtree: ReadonlySet<string>): Sup
   for (const host of scene.entities) {
     if (subtree.has(host.id) || !host.visible) continue
     const placement = resolvedPlacement(host)
-    if (!placement.allowedTargetClasses.includes('support-surface')) continue
+    if (placement.supportSurfaces.length === 0) continue
     let hostWorld
     try {
       hostWorld = getWorldTransform(host.id, scene.entities)

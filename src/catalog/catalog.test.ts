@@ -322,9 +322,17 @@ describe('generic catalog', () => {
       'main-top',
       'return-top',
     ])
+    expect(desk.placement).toMatchObject({
+      allowedTargetClasses: ['floor'],
+      preferredTargetClass: 'floor',
+    })
     expect(cabinet.placement.supportSurfaces[0]).toMatchObject({
       id: 'interior-shelf-low',
       usableClearanceHeight: expect.any(Number),
+    })
+    expect(cabinet.placement).toMatchObject({
+      allowedTargetClasses: ['floor'],
+      preferredTargetClass: 'floor',
     })
     expect(plain.placement).toMatchObject({
       allowedTargetClasses: ['floor'],

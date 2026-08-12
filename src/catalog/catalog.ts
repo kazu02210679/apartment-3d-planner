@@ -329,8 +329,8 @@ function resolvePlacementProfile(
       : definition.id === 'desk.l-shaped-sit-stand'
         ? {
             contactPlane: 'bottom',
-            allowedTargetClasses: ['floor', 'support-surface'],
-            preferredTargetClass: 'support-surface',
+            allowedTargetClasses: ['floor'],
+            preferredTargetClass: 'floor',
             supportSurfaces: [
               surface('main-top', { x: 0, y: dimensions.height / 2, z: -350 }, 1800, 700),
               surface('return-top', { x: 200, y: dimensions.height / 2, z: 350 }, 1400, 600),
@@ -339,8 +339,8 @@ function resolvePlacementProfile(
         : definition.id === 'desk.straight'
           ? {
               contactPlane: 'bottom',
-              allowedTargetClasses: ['floor', 'support-surface'],
-              preferredTargetClass: 'support-surface',
+              allowedTargetClasses: ['floor'],
+              preferredTargetClass: 'floor',
               supportSurfaces: [
                 surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
               ],
@@ -348,8 +348,8 @@ function resolvePlacementProfile(
           : definition.id === 'desk.shelf'
             ? {
                 contactPlane: 'bottom',
-                allowedTargetClasses: ['floor', 'support-surface'],
-                preferredTargetClass: 'support-surface',
+                allowedTargetClasses: ['floor'],
+                preferredTargetClass: 'floor',
                 supportSurfaces: [
                   surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
                 ],
@@ -357,8 +357,8 @@ function resolvePlacementProfile(
             : definition.id === 'storage.shelf-cabinet'
               ? {
                   contactPlane: 'bottom',
-                  allowedTargetClasses: ['floor', 'support-surface'],
-                  preferredTargetClass: 'support-surface',
+                  allowedTargetClasses: ['floor'],
+                  preferredTargetClass: 'floor',
                   supportSurfaces: [
                     surface('interior-shelf-low', { x: 0, y: 320, z: 0 }, 700, 320, 520),
                     surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
@@ -367,8 +367,8 @@ function resolvePlacementProfile(
               : definition.id === 'table.side'
                 ? {
                     contactPlane: 'bottom',
-                    allowedTargetClasses: ['floor', 'support-surface'],
-                    preferredTargetClass: 'support-surface',
+                    allowedTargetClasses: ['floor'],
+                    preferredTargetClass: 'floor',
                     supportSurfaces: [
                       surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
                     ],

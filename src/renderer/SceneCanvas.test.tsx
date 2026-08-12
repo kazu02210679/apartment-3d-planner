@@ -111,7 +111,7 @@ describe('SceneCanvas', () => {
     expect(screen.getByRole('menuitem', { name: '床に置く' })).toBeInTheDocument()
   })
 
-  it('only handles End on the edit canvas, never from form controls or preview', () => {
+  it('only handles End when the edit canvas itself is focused', () => {
     let id = 0
     const store = createEditorStore({
       initialScene: createEmptyScene('6-tatami', {
@@ -125,16 +125,25 @@ describe('SceneCanvas', () => {
     render(<SceneCanvas store={store} webglAvailable={() => true} />)
     const input = document.createElement('input')
     document.body.append(input)
+    const canvas = screen.getByTestId('scene-canvas')
+
+    expect(canvas).toHaveAttribute('tabindex', '0')
+    expect(canvas).toHaveAttribute('aria-label', '3D editing canvas')
 
     act(() => fireEvent.keyDown(input, { key: 'End' }))
     expect(placeEntity).not.toHaveBeenCalled()
 
     act(() => fireEvent.keyDown(document.body, { key: 'End' }))
+    expect(placeEntity).not.toHaveBeenCalled()
+
+    act(() => canvas.focus())
+    act(() => fireEvent.keyDown(canvas, { key: 'End' }))
     expect(placeEntity).toHaveBeenCalledWith(entityId, 'nearest')
 
     placeEntity.mockClear()
     act(() => store.setMode('preview'))
-    act(() => fireEvent.keyDown(input, { key: 'End' }))
+    expect(canvas).toHaveAttribute('tabindex', '-1')
+    act(() => fireEvent.keyDown(canvas, { key: 'End' }))
     expect(placeEntity).not.toHaveBeenCalled()
 
     input.remove()

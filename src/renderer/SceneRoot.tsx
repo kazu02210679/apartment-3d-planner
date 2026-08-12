@@ -15,7 +15,7 @@ import {
   resolvePortWorldAnchor,
 } from '../domain/connections'
 import { PreviewEnvironment } from './PreviewEnvironment'
-import { getRendererProfile } from './quality'
+import type { RendererProfile } from './quality'
 import { RoomShell } from './RoomShell'
 import type { EditorStore, EditorTool } from '../app/editor-store'
 import { getCatalogDefinition, resolveCatalogInstance } from '../catalog/catalog'
@@ -69,6 +69,7 @@ interface SceneRootProps {
   readonly cameraIntent: CameraIntent
   readonly store: EditorStore
   readonly mode: 'edit' | 'preview'
+  readonly profile: RendererProfile
   readonly activeTool: EditorTool
   readonly onEntitySelect: (id: string) => void
   readonly onEntityContextMenu?: (id: string, event: MouseEvent) => void
@@ -82,12 +83,12 @@ export function SceneRoot({
   cameraIntent,
   store,
   mode,
+  profile,
   activeTool,
   onEntitySelect,
   onEntityContextMenu = () => undefined,
   onEmptyHit,
 }: SceneRootProps) {
-  const profile = getRendererProfile(mode)
   const objects = useRef(new Map<string, Group>())
   const [selectedObject, setSelectedObject] = useState<Group | null>(null)
   const [orbitEnabled, setOrbitEnabled] = useState(true)

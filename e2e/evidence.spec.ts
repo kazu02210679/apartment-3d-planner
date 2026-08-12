@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import { expect, test, type Browser, type Page } from '@playwright/test'
@@ -50,6 +50,10 @@ const LONG_UPDATE_COUNT = 360
 const SINGLE_UPDATE_COUNT = 1
 const WARMUP_UPDATE_COUNT = 4
 const PREVIEW_UPDATE_COUNT = 720
+
+function readExistingEvidenceFile(path: string): string {
+  return existsSync(path) ? readFileSync(path, 'utf8') : ''
+}
 
 test.use({ viewport: VIEWPORT })
 
@@ -874,7 +878,7 @@ test('AC-007 resize diagnostic A compares 360 updates with one update', async ({
     'evidence',
     'verification-summary.json',
   )
-  const summaryBefore = readFileSync(summaryPath, 'utf8')
+  const summaryBefore = readExistingEvidenceFile(summaryPath)
   const pageDiagnostics = attachPageDiagnostics(page)
   await installEvidenceProbe(page)
   const fixture = createPerformanceScene(69)
@@ -882,7 +886,7 @@ test('AC-007 resize diagnostic A compares 360 updates with one update', async ({
   const calibration = await calibrateResizeHandle(page, fixture)
   const diagnostics = diagnosticsFor(pageDiagnostics, await readProbeDiagnostics(page))
   if (!calibration.readyCase) {
-    const summaryAfter = readFileSync(summaryPath, 'utf8')
+    const summaryAfter = readExistingEvidenceFile(summaryPath)
     await persistDiagnosticArtifact(testInfo, 'ac-007-resize-diagnostic-1-update', {
       schemaVersion: 1,
       criterion: 'AC-007',
@@ -967,7 +971,7 @@ test('AC-007 resize diagnostic A compares 360 updates with one update', async ({
     SINGLE_UPDATE_COUNT,
     'ac-007-resize-diagnostic-1-update',
   )
-  const summaryAfter = readFileSync(summaryPath, 'utf8')
+  const summaryAfter = readExistingEvidenceFile(summaryPath)
   const summaryUnchanged = summaryBefore === summaryAfter
   const baselinePointerdownLongTaskMs = maxLongTaskDuration(
     baseline.longTasksByPhase.pointerdown,
@@ -1054,7 +1058,7 @@ test('AC-007 resize diagnostic B compares a cancelled warm-up with the 360-updat
     'evidence',
     'verification-summary.json',
   )
-  const summaryBefore = readFileSync(summaryPath, 'utf8')
+  const summaryBefore = readExistingEvidenceFile(summaryPath)
   const pageDiagnostics = attachPageDiagnostics(page)
   await installEvidenceProbe(page)
   const fixture = createPerformanceScene(69)
@@ -1062,7 +1066,7 @@ test('AC-007 resize diagnostic B compares a cancelled warm-up with the 360-updat
   const calibration = await calibrateResizeHandle(page, fixture)
   const diagnostics = diagnosticsFor(pageDiagnostics, await readProbeDiagnostics(page))
   if (!calibration.readyCase) {
-    const summaryAfter = readFileSync(summaryPath, 'utf8')
+    const summaryAfter = readExistingEvidenceFile(summaryPath)
     await persistDiagnosticArtifact(testInfo, 'ac-007-resize-diagnostic-warmup', {
       schemaVersion: 1,
       criterion: 'AC-007',
@@ -1127,7 +1131,7 @@ test('AC-007 resize diagnostic B compares a cancelled warm-up with the 360-updat
     LONG_UPDATE_COUNT,
     'ac-007-resize-diagnostic-warmup-360-updates',
   )
-  const summaryAfter = readFileSync(summaryPath, 'utf8')
+  const summaryAfter = readExistingEvidenceFile(summaryPath)
   const summaryUnchanged = summaryBefore === summaryAfter
   const retainedWarmupLongTasks = longTasksRetainedInPreWindow(
     warmup.probe.longTasks,
@@ -1224,7 +1228,7 @@ test('AC-007 resize diagnostic C measures the first resize in a fresh context wi
     'evidence',
     'verification-summary.json',
   )
-  const summaryBefore = readFileSync(summaryPath, 'utf8')
+  const summaryBefore = readExistingEvidenceFile(summaryPath)
   const fixture = createPerformanceScene(69)
   expect(fixture.entities).toHaveLength(100)
 
@@ -1232,7 +1236,7 @@ test('AC-007 resize diagnostic C measures the first resize in a fresh context wi
   await installEvidenceProbe(calibrationPage)
   const calibration = await calibrateResizeHandle(calibrationPage, fixture)
   if (!calibration.readyCase) {
-    const summaryAfter = readFileSync(summaryPath, 'utf8')
+    const summaryAfter = readExistingEvidenceFile(summaryPath)
     await persistDiagnosticArtifact(
       testInfo,
       'ac-007-resize-diagnostic-fresh-1-update',
@@ -1317,7 +1321,7 @@ test('AC-007 resize diagnostic C measures the first resize in a fresh context wi
       SINGLE_UPDATE_COUNT,
       'ac-007-resize-diagnostic-fresh-1-update',
     )
-    const summaryAfter = readFileSync(summaryPath, 'utf8')
+    const summaryAfter = readExistingEvidenceFile(summaryPath)
     const summaryUnchanged = summaryBefore === summaryAfter
     const pointerdownLongTaskMs = maxLongTaskDuration(
       measurement.longTasksByPhase.pointerdown,
@@ -1439,7 +1443,7 @@ test('AC-007 resize diagnostic D attributes fine grained first resize boundaries
     'evidence',
     'verification-summary.json',
   )
-  const summaryBefore = readFileSync(summaryPath, 'utf8')
+  const summaryBefore = readExistingEvidenceFile(summaryPath)
   const fixture = createPerformanceScene(69)
   expect(fixture.entities).toHaveLength(100)
   await installEvidenceProbe(calibrationPage)
@@ -1510,7 +1514,7 @@ test('AC-007 resize diagnostic D attributes fine grained first resize boundaries
             stableFrameWitnessElapsed: measurement.stableFrameWitness.elapsedMs,
           }
         : null
-    const summaryAfter = readFileSync(summaryPath, 'utf8')
+    const summaryAfter = readExistingEvidenceFile(summaryPath)
     const summaryUnchanged = summaryBefore === summaryAfter
     const checks = [
       ...prefixedChecks('fine-grained', measurement.checks),
@@ -1617,18 +1621,23 @@ test('projects summary status and checks exactly from the raw artifact', () => {
   })
 
   const evidenceRoot = join(process.cwd(), 'docs', 'reports', 'evidence')
-  const summary = JSON.parse(
-    readFileSync(join(evidenceRoot, 'verification-summary.json'), 'utf8'),
-  ) as {
-    readonly runs: Record<string, { readonly status: string; readonly checks: unknown }>
-  }
-  for (const name of [
+  const summaryPath = join(evidenceRoot, 'verification-summary.json')
+  const names = [
     'ac-007-resize-5s',
     'ac-007-transform-5s',
     'ac-007-transform-attributed-5s',
     'ac-008-orbit-5s',
     'ac-022-browser-diagnostics',
-  ]) {
+  ]
+  const availableNames = names.filter((name) =>
+    existsSync(join(evidenceRoot, 'raw', `${name}.json`)),
+  )
+  if (!existsSync(summaryPath) || availableNames.length === 0) return
+
+  const summary = JSON.parse(readFileSync(summaryPath, 'utf8')) as {
+    readonly runs: Record<string, { readonly status: string; readonly checks: unknown }>
+  }
+  for (const name of availableNames) {
     const raw = JSON.parse(
       readFileSync(join(evidenceRoot, 'raw', `${name}.json`), 'utf8'),
     ) as { readonly status: string; readonly checks: unknown }

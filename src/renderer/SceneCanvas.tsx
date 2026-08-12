@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react'
@@ -183,35 +184,29 @@ export function SceneCanvas({
           }).status !== 'unavailable',
       }
     : { 'in-bounds': false, nearest: false, floor: false }
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
+  const onCanvasKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (
         event.key !== 'End' ||
-        event.isComposing ||
+        event.nativeEvent.isComposing ||
         event.keyCode === 229 ||
         event.defaultPrevented ||
         snapshot.mode !== 'edit' ||
         event.ctrlKey ||
         event.altKey ||
-        event.metaKey
+        event.metaKey ||
+        placementMenu ||
+        document.activeElement !== event.currentTarget ||
+        !snapshot.selectedEntityId
       )
         return
-      const target = event.target as HTMLElement | null
-      if (
-        target?.closest(
-          'input, textarea, select, button, [contenteditable="true"], [role="dialog"], [role="menu"]',
-        )
-      )
-        return
-      if (!snapshot.selectedEntityId) return
       if (
         store.placeEntity(snapshot.selectedEntityId, event.shiftKey ? 'floor' : 'nearest')
       )
         event.preventDefault()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [snapshot.mode, snapshot.selectedEntityId, store])
+    },
+    [placementMenu, snapshot.mode, snapshot.selectedEntityId, store],
+  )
   useEffect(() => {
     if (snapshot.mode !== 'edit') setPlacementMenu(undefined)
   }, [snapshot.mode])
@@ -239,6 +234,10 @@ export function SceneCanvas({
       className="scene-canvas"
       data-testid="scene-canvas"
       data-renderer-profile={profile.id}
+      role="region"
+      aria-label="3D editing canvas"
+      tabIndex={snapshot.mode === 'edit' ? 0 : -1}
+      onKeyDown={onCanvasKeyDown}
       onContextMenu={onCanvasContextMenu}
       onPointerDown={(event) => {
         if (!(event.target as HTMLElement).closest('[data-placement-menu]'))
@@ -318,6 +317,7 @@ export function SceneCanvas({
               cameraIntent={cameraIntent}
               store={store}
               mode={snapshot.mode}
+              profile={profile}
               activeTool={snapshot.activeTool}
               onEntitySelect={selectEntity}
               onEmptyHit={clearSelection}

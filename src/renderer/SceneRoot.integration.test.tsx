@@ -23,6 +23,15 @@ import { createEditorStore } from '../app/editor-store'
 import { createEmptyScene } from '../domain/scene'
 import type { AutosaveCoordinator } from '../persistence/autosave'
 import { SceneRoot } from './SceneRoot'
+import { getRendererProfile } from './quality'
+
+vi.mock('./PreviewEnvironment', () => ({
+  PreviewEnvironment: ({
+    profile,
+  }: {
+    readonly profile: { readonly qualityTier: string }
+  }) => <group name={`preview-environment-${profile.qualityTier}`} />,
+}))
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -47,6 +56,7 @@ function rootProps(store: ReturnType<typeof createStore>) {
     store,
     mode: snapshot.mode,
     activeTool: snapshot.activeTool,
+    profile: getRendererProfile(snapshot.mode),
     onEntitySelect: (id: string) => store.selectEntity(id),
     onEmptyHit: () => store.clearSelection(),
   }
@@ -322,5 +332,15 @@ describe('SceneRoot renderer integration', () => {
 
     expect(() => renderer.scene.findByProps({ name: 'resize-handles' })).toThrow()
     expect(() => renderer.scene.findByProps({ name: 'transform-gizmo' })).toThrow()
+  })
+
+  it('propagates the caller-selected renderer profile instead of resetting preview to high', async () => {
+    const store = createStore()
+    store.setMode('preview')
+    const profile = getRendererProfile('preview', 'safe')
+    const renderer = await create(<SceneRoot {...rootProps(store)} profile={profile} />)
+
+    expect(renderer.scene.findByProps({ name: 'preview-environment-safe' })).toBeDefined()
+    expect(() => renderer.scene.findByProps({ name: 'contact-shadows' })).toThrow()
   })
 })

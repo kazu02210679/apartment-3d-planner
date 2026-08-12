@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
+  // Vitest owns *.test.ts; Playwright owns only functional *.spec.ts files.
+  testMatch: '**/*.spec.ts',
   outputDir: 'node_modules/.cache/playwright/test-results',
   // The fixed 100-object acceptance benchmark must run without competing
   // Chromium render processes so its page-side timing remains reproducible.
@@ -17,6 +19,12 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: '**/evidence.spec.ts',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'evidence',
+      testMatch: '**/evidence.spec.ts',
       use: { ...devices['Desktop Chrome'] },
     },
   ],

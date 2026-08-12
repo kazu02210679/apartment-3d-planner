@@ -84,6 +84,11 @@ test('keyboard-only controls follow focus order and Escape cancels a real cable 
   await page.goto('/')
   await expectNoSeriousOrCritical(page)
 
+  const sceneCanvas = page.getByTestId('scene-canvas')
+  await expect(sceneCanvas).toHaveAttribute('role', 'region')
+  await expect(sceneCanvas).toHaveAttribute('aria-label', '3D editing canvas')
+  await expect(sceneCanvas).toHaveAttribute('tabindex', '0')
+
   const preview = page.getByRole('button', { name: '高品質プレビュー', exact: true })
   expect(await tabUntilActive(page, preview)).toBeGreaterThan(0)
   await page.keyboard.press('Enter')
@@ -104,6 +109,12 @@ test('keyboard-only controls follow focus order and Escape cancels a real cable 
   await page.keyboard.type('75')
   await page.keyboard.press('Enter')
   await expect(positionX).toHaveValue('75')
+  await positionX.focus()
+  await page.keyboard.press('End')
+  await expect(positionX).toHaveValue('75')
+  await sceneCanvas.focus()
+  await page.keyboard.press('End')
+  await expect(sceneCanvas).toBeFocused()
 
   const undo = page.getByRole('button', { name: '元に戻す' })
   expect(await tabUntilActive(page, undo, 'backward')).toBeGreaterThan(0)

@@ -114,6 +114,18 @@ describe('placement solver', () => {
     expect(solution.transform?.position.y).toBeCloseTo(360 + 720 / 2 + 456 / 2)
   })
 
+  it('does not place a support-capable desk on another desk', () => {
+    const input = scene()
+    input.entities.push(
+      catalogBox('host-desk', 'desk.straight', { x: 0, y: 360, z: 0 }),
+      catalogBox('selected-desk', 'desk.straight', { x: 0, y: 1200, z: 0 }),
+    )
+
+    const solution = solvePlacement(input, { kind: 'nearest', entityId: 'selected-desk' })
+
+    expect(solution).toMatchObject({ status: 'changed', target: { kind: 'floor' } })
+  })
+
   it('returns a no-op for an already valid floor placement and rejects locked or hidden entities', () => {
     const input = scene()
     input.entities.push(box('item', { x: 0, y: 50, z: 0 }))
