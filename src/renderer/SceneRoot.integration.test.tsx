@@ -1,14 +1,44 @@
 import { create } from '@react-three/test-renderer'
-import { act } from 'react'
+import { act, useImperativeHandle, useMemo, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+
+type MockOrbitControls = {
+  readonly target: { readonly set: ReturnType<typeof vi.fn> }
+  readonly dollyIn: ReturnType<typeof vi.fn>
+  readonly dollyOut: ReturnType<typeof vi.fn>
+  readonly reset: ReturnType<typeof vi.fn>
+  readonly update: ReturnType<typeof vi.fn>
+}
+
+const cameraIntentTestState = vi.hoisted(() => ({
+  lastControls: undefined as MockOrbitControls | undefined,
+}))
 
 vi.mock('@react-three/drei', () => ({
   Edges: ({ color }: { readonly color: string }) => (
     <lineSegments name={`outline-${color}`} />
   ),
-  OrbitControls: ({ enabled }: { readonly enabled: boolean }) => (
-    <group name="orbit-controls" userData={{ orbitEnabled: enabled }} />
-  ),
+  OrbitControls: ({
+    enabled,
+    ref,
+  }: {
+    readonly enabled: boolean
+    readonly ref?: React.Ref<MockOrbitControls>
+  }) => {
+    const controls = useMemo(
+      () => ({
+        target: { set: vi.fn() },
+        dollyIn: vi.fn(),
+        dollyOut: vi.fn(),
+        reset: vi.fn(),
+        update: vi.fn(),
+      }),
+      [],
+    )
+    cameraIntentTestState.lastControls = controls
+    useImperativeHandle(ref, () => controls, [controls])
+    return <group name="orbit-controls" userData={{ orbitEnabled: enabled }} />
+  },
   ContactShadows: () => <group name="contact-shadows" />,
   TransformControls: () => <group name="transform-gizmo" />,
 }))
@@ -22,7 +52,7 @@ vi.mock('./controls/TransformGizmo', () => ({
 import { createEditorStore } from '../app/editor-store'
 import { createEmptyScene } from '../domain/scene'
 import type { AutosaveCoordinator } from '../persistence/autosave'
-import { SceneRoot } from './SceneRoot'
+import { CameraControls, SceneRoot, type CameraIntent } from './SceneRoot'
 import { getRendererProfile } from './quality'
 
 vi.mock('./PreviewEnvironment', () => ({
@@ -63,6 +93,48 @@ function rootProps(store: ReturnType<typeof createStore>) {
 }
 
 describe('SceneRoot renderer integration', () => {
+  it.each([
+    ['top', 'target.set'] as const,
+    ['reset', 'reset'] as const,
+    ['zoom-in', 'dollyIn'] as const,
+    ['zoom-out', 'dollyOut'] as const,
+  ])(
+    'consumes %s camera intent once across a controls remount',
+    async (intent, method) => {
+      function IntentHarness({ version }: { readonly version: number }) {
+        const [currentIntent, setCurrentIntent] = useState<CameraIntent>(intent)
+        return (
+          <CameraControls
+            key={version}
+            intent={currentIntent}
+            enabled
+            onIntentConsumed={(consumed) =>
+              setCurrentIntent((current) => (current === consumed ? 'idle' : current))
+            }
+          />
+        )
+      }
+
+      const renderer = await create(<IntentHarness version={1} />)
+      const firstControls = cameraIntentTestState.lastControls!
+      expect(firstControls[method.split('.')[0] as keyof MockOrbitControls]).toBeDefined()
+      const firstMethod =
+        method === 'target.set'
+          ? firstControls.target.set
+          : firstControls[method as keyof Omit<MockOrbitControls, 'target'>]
+      expect(firstMethod).toHaveBeenCalled()
+
+      await renderer.update(<IntentHarness version={2} />)
+      const remountedControls = cameraIntentTestState.lastControls!
+      const remountedMethod =
+        method === 'target.set'
+          ? remountedControls.target.set
+          : remountedControls[method as keyof Omit<MockOrbitControls, 'target'>]
+      expect(remountedMethod).not.toHaveBeenCalled()
+      await renderer.unmount()
+    },
+  )
+
   it('renders routed cable geometry in editor and preview without mutating the scene', async () => {
     const store = createStore()
     const cableId = store.addCatalogItem('cable.generic')!

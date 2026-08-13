@@ -154,6 +154,31 @@ describe('SceneCanvas', () => {
     window.history.replaceState({}, '', '/')
   })
 
+  it('does not expose renderer evidence for query lookalikes', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+
+    for (const path of [
+      '/?evidence=1&x=1',
+      '/?evidence=1&evidence=1',
+      '/?evidence=%31',
+      '/?EVIDENCE=1',
+    ]) {
+      window.history.replaceState({}, '', path)
+      const rendered = render(<SceneCanvas store={store} webglAvailable={() => true} />)
+
+      expect(window.__apartmentRendererEvidence).toBeUndefined()
+      rendered.unmount()
+    }
+
+    window.history.replaceState({}, '', '/')
+  })
+
   it('keeps exact numeric editing available when WebGL is unavailable', () => {
     let id = 0
     const store = createEditorStore({

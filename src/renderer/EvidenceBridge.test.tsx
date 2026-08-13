@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react'
+import { Vector3 } from 'three'
 import { describe, expect, it, vi } from 'vitest'
 
 const rendererState = vi.hoisted(() => ({
@@ -41,15 +42,27 @@ describe('RendererEvidenceBridge', () => {
       undo: vi.fn(() => true),
       redo: vi.fn(() => true),
     }
+    const forcePreviewTier = vi.fn()
+    const orbitTargetRef = { current: new Vector3(0.2, 0.8, -0.4) }
     const profile = getRendererProfile('edit')
     const rendered = render(
-      <RendererEvidenceBridge profile={profile} store={store as never} />,
+      <RendererEvidenceBridge
+        profile={profile}
+        store={store as never}
+        onForcePreviewTier={forcePreviewTier}
+        orbitTargetRef={orbitTargetRef}
+      />,
     )
 
     expect(window.__apartmentRendererEvidence?.getSnapshot()).toEqual({
       ...rendererState,
       profile,
+      orbitTarget: [0.2, 0.8, -0.4],
     })
+    orbitTargetRef.current.set(0.4, 0.9, -0.6)
+    expect(window.__apartmentRendererEvidence?.getSnapshot().orbitTarget).toEqual([
+      0.4, 0.9, -0.6,
+    ])
     publish()
     scene = { id: 'scene-b' }
     publish()
@@ -66,10 +79,17 @@ describe('RendererEvidenceBridge', () => {
     const bridge = window.__apartmentRendererEvidence
     const previewProfile = getRendererProfile('preview', 'balanced')
     rendered.rerender(
-      <RendererEvidenceBridge profile={previewProfile} store={store as never} />,
+      <RendererEvidenceBridge
+        profile={previewProfile}
+        store={store as never}
+        onForcePreviewTier={forcePreviewTier}
+        orbitTargetRef={orbitTargetRef}
+      />,
     )
     expect(window.__apartmentRendererEvidence).toBe(bridge)
     expect(window.__apartmentRendererEvidence?.getSnapshot().profile).toBe(previewProfile)
+    window.__apartmentRendererEvidence?.forcePreviewTier('safe')
+    expect(forcePreviewTier).toHaveBeenCalledWith('safe')
     expect(window.__apartmentRendererEvidence?.getCounters()).toEqual({
       storeNotifications: 2,
       canonicalCommands: 0,
@@ -125,6 +145,7 @@ describe('RendererEvidenceBridge', () => {
       <RendererEvidenceBridge
         profile={getRendererProfile('edit')}
         store={store as never}
+        onForcePreviewTier={vi.fn()}
       />,
     )
 
@@ -203,6 +224,7 @@ describe('RendererEvidenceBridge', () => {
       <RendererEvidenceBridge
         profile={getRendererProfile('edit')}
         store={store as never}
+        onForcePreviewTier={vi.fn()}
       />,
     )
 
@@ -248,6 +270,7 @@ describe('RendererEvidenceBridge', () => {
       <RendererEvidenceBridge
         profile={getRendererProfile('edit')}
         store={store as never}
+        onForcePreviewTier={vi.fn()}
       />,
     )
 

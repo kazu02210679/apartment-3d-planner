@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   assessAutosaveEvidence,
+  assessBoundedWindowDuration,
   attributeLongTasks,
   classifyResizeSetup,
   classifyConsoleMessage,
@@ -14,6 +15,7 @@ import {
   percentile,
   regenerateEvidenceSummary,
   rendererRuntimeRestored,
+  resolvePreWindowLongTasks,
   summarizeSamples,
   summarizeCdpTrace,
   storageWritesInWindow,
@@ -22,6 +24,12 @@ import {
 } from './evidence'
 
 describe('evidence summary helpers', () => {
+  it('defaults the optional CDP warm-up input without leaking stop scope', () => {
+    const warmup: LongTaskSample = { startMs: -4, durationMs: 4, name: 'warmup' }
+    expect(resolvePreWindowLongTasks(undefined)).toEqual([])
+    expect(resolvePreWindowLongTasks([warmup])).toEqual([warmup])
+  })
+
   it('regenerates runs in locale-independent JavaScript code-point order', () => {
     const evidenceRoot = mkdtempSync(join(tmpdir(), 'evidence-summary-order-'))
     const rawRoot = join(evidenceRoot, 'raw')
@@ -81,11 +89,7 @@ describe('evidence summary helpers', () => {
     ]
 
     expect(storageWritesInWindow(writes, 0, 1900).map((write) => write.atMs)).toEqual([
-      473.8,
-      810.5,
-      1185,
-      1592,
-      1864.5,
+      473.8, 810.5, 1185, 1592, 1864.5,
     ])
     expect(storageWritesInWindow(writes, 0, 5500)).toHaveLength(7)
   })
@@ -252,6 +256,334 @@ describe('evidence summary helpers', () => {
         ]),
       }),
     )
+  })
+
+  it('separates synthetic nested renderer CPU, GPU-process, and warm-up evidence', () => {
+    const summary = summarizeCdpTrace(
+      [
+        {
+          name: 'thread_name',
+          cat: '__metadata',
+          ph: 'M',
+          ts: 0,
+          pid: 10,
+          tid: 11,
+          args: { name: 'CrRendererMain' },
+        },
+        {
+          name: 'process_name',
+          cat: '__metadata',
+          ph: 'M',
+          ts: 0,
+          pid: 20,
+          tid: 0,
+          args: { name: 'GPU Process' },
+        },
+        {
+          name: 'thread_name',
+          cat: '__metadata',
+          ph: 'M',
+          ts: 0,
+          pid: 20,
+          tid: 21,
+          args: { name: 'CrGpuMain' },
+        },
+        {
+          name: 'ac007:evidence-window-start',
+          cat: 'blink.user_timing',
+          ph: 'R',
+          ts: 1_000,
+        },
+        {
+          name: 'RunTask',
+          cat: 'devtools.timeline',
+          ph: 'X',
+          ts: 1_000,
+          dur: 100_000,
+          pid: 10,
+          tid: 11,
+        },
+        {
+          name: 'EventDispatch',
+          cat: 'devtools.timeline',
+          ph: 'X',
+          ts: 11_000,
+          dur: 20_000,
+          pid: 10,
+          tid: 11,
+        },
+        {
+          name: 'FunctionCall',
+          cat: 'devtools.timeline',
+          ph: 'X',
+          ts: 16_000,
+          dur: 5_000,
+          pid: 10,
+          tid: 11,
+        },
+        {
+          name: 'GpuPresent',
+          cat: 'gpu',
+          ph: 'X',
+          ts: 31_000,
+          dur: 25_000,
+          pid: 20,
+          tid: 21,
+        },
+      ],
+      [{ startMs: 0, durationMs: 100, name: 'self' }],
+      [{ startMs: -80, durationMs: 80, name: 'warmup' }],
+    )
+
+    expect(summary.attributionMethod).toBe(
+      'same-thread-interval-union-with-per-event-exclusive-and-gpu-thread-coverage',
+    )
+    expect(summary.rendererMainThread).toEqual({
+      pid: 10,
+      tid: 11,
+      name: 'CrRendererMain',
+    })
+    expect(summary.warmup).toMatchObject({
+      preWindowCount: 1,
+      inWindowCount: 1,
+      preWindowTotalMs: 80,
+      inWindowTotalMs: 100,
+    })
+    expect(summary.longTasks[0]?.mainThreadCpu).toEqual(
+      expect.objectContaining({
+        threadWallClockCoverageMs: 100,
+        events: expect.arrayContaining([
+          expect.objectContaining({ name: 'RunTask', eventExclusiveMs: 80 }),
+        ]),
+      }),
+    )
+    expect(summary.longTasks[0]?.gpu).toEqual(
+      expect.objectContaining({
+        processIds: [20],
+        wallClockCoverageMs: 25,
+        threadCoverage: [
+          expect.objectContaining({
+            pid: 20,
+            tid: 21,
+            wallClockCoverageMs: 25,
+          }),
+        ],
+      }),
+    )
+  })
+
+  it('separates event exclusive time from clipped same-thread coverage', () => {
+    const summary = summarizeCdpTrace(
+      [
+        {
+          name: 'ac007:evidence-window-start',
+          cat: 'blink.user_timing',
+          ph: 'R',
+          ts: 0,
+        },
+        {
+          name: 'thread_name',
+          cat: '__metadata',
+          ph: 'M',
+          ts: 0,
+          pid: 1,
+          tid: 10,
+          args: { name: 'CrRendererMain' },
+        },
+        {
+          name: 'process_name',
+          cat: '__metadata',
+          ph: 'M',
+          ts: 0,
+          pid: 2,
+          tid: 0,
+          args: { name: 'GPU Process' },
+        },
+        {
+          name: 'thread_name',
+          cat: '__metadata',
+          ph: 'M',
+          ts: 0,
+          pid: 2,
+          tid: 20,
+          args: { name: 'CrGpuMain' },
+        },
+        {
+          name: 'thread_name',
+          cat: '__metadata',
+          ph: 'M',
+          ts: 0,
+          pid: 2,
+          tid: 21,
+          args: { name: 'GpuWorker' },
+        },
+        {
+          name: 'RunTask',
+          cat: 'devtools.timeline',
+          ph: 'X',
+          ts: 0,
+          dur: 100_000,
+          pid: 1,
+          tid: 10,
+        },
+        {
+          name: 'CrossBoundary',
+          cat: 'devtools.timeline',
+          ph: 'X',
+          ts: -50_000,
+          dur: 70_000,
+          pid: 1,
+          tid: 10,
+        },
+        {
+          name: 'NestedParent',
+          cat: 'devtools.timeline',
+          ph: 'X',
+          ts: 10_000,
+          dur: 20_000,
+          pid: 1,
+          tid: 10,
+        },
+        {
+          name: 'NestedChild',
+          cat: 'devtools.timeline',
+          ph: 'X',
+          ts: 10_000,
+          dur: 10_000,
+          pid: 1,
+          tid: 10,
+        },
+        {
+          name: 'Sibling',
+          cat: 'devtools.timeline',
+          ph: 'X',
+          ts: 30_000,
+          dur: 20_000,
+          pid: 1,
+          tid: 10,
+        },
+        {
+          name: 'SameTimeWorker',
+          cat: 'devtools.timeline',
+          ph: 'X',
+          ts: 0,
+          dur: 100_000,
+          pid: 1,
+          tid: 11,
+        },
+        {
+          name: 'GpuOuter',
+          cat: 'gpu',
+          ph: 'X',
+          ts: 0,
+          dur: 100_000,
+          pid: 2,
+          tid: 20,
+        },
+        {
+          name: 'GpuChild',
+          cat: 'gpu',
+          ph: 'X',
+          ts: 20_000,
+          dur: 20_000,
+          pid: 2,
+          tid: 20,
+        },
+        {
+          name: 'GpuParallel',
+          cat: 'gpu',
+          ph: 'X',
+          ts: 0,
+          dur: 100_000,
+          pid: 2,
+          tid: 21,
+        },
+      ],
+      [{ startMs: 0, durationMs: 100, name: 'task' }],
+    )
+    const task = summary.longTasks[0]!
+    expect(task.mainThreadCpu).toEqual(
+      expect.objectContaining({
+        threadWallClockCoverageMs: 100,
+        events: expect.arrayContaining([
+          expect.objectContaining({ name: 'RunTask', eventExclusiveMs: 50 }),
+          expect.objectContaining({ name: 'CrossBoundary', eventExclusiveMs: 10 }),
+          expect.objectContaining({ name: 'NestedParent', eventExclusiveMs: 10 }),
+          expect.objectContaining({ name: 'NestedChild', eventExclusiveMs: 10 }),
+          expect.objectContaining({ name: 'Sibling', eventExclusiveMs: 20 }),
+        ]),
+      }),
+    )
+    expect(task.gpu).toEqual(
+      expect.objectContaining({
+        wallClockCoverageMs: 100,
+        threadCoverage: expect.arrayContaining([
+          expect.objectContaining({ pid: 2, tid: 20, wallClockCoverageMs: 100 }),
+          expect.objectContaining({ pid: 2, tid: 21, wallClockCoverageMs: 100 }),
+        ]),
+      }),
+    )
+    expect(task.gpu.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'GpuOuter', eventExclusiveMs: 80 }),
+        expect.objectContaining({ name: 'GpuChild', eventExclusiveMs: 20 }),
+        expect.objectContaining({ name: 'GpuParallel', eventExclusiveMs: 100 }),
+      ]),
+    )
+  })
+
+  it('uses event metadata fallback without inventing a renderer or GPU name', () => {
+    const summary = summarizeCdpTrace(
+      [
+        {
+          name: 'ac007:evidence-window-start',
+          cat: 'blink.user_timing',
+          ph: 'R',
+          ts: 0,
+        },
+        {
+          name: 'RunTask',
+          cat: 'renderer.timeline',
+          ph: 'X',
+          ts: 0,
+          dur: 100_000,
+          pid: 30,
+          tid: 31,
+        },
+        {
+          name: 'GpuPresent',
+          cat: 'gpu',
+          ph: 'X',
+          ts: 10_000,
+          dur: 20_000,
+          pid: 40,
+          tid: 41,
+        },
+      ],
+      [{ startMs: 0, durationMs: 100, name: 'task' }],
+    )
+    expect(summary.rendererMainThread).toEqual({ pid: 30, tid: 31, name: null })
+    expect(summary.longTasks[0]?.mainThreadCpu.threadWallClockCoverageMs).toBe(100)
+    expect(summary.longTasks[0]?.gpu).toEqual(
+      expect.objectContaining({
+        processIds: [40],
+        wallClockCoverageMs: 20,
+        threadCoverage: [
+          expect.objectContaining({ pid: 40, tid: 41, wallClockCoverageMs: 20 }),
+        ],
+      }),
+    )
+  })
+
+  it('requires a bounded observation window without weakening the requested duration', () => {
+    expect(assessBoundedWindowDuration(10_000, 10_000, 20_000)).toEqual({
+      passed: true,
+      observedMs: 10_000,
+      minimumMs: 10_000,
+      maximumMs: 20_000,
+    })
+    expect(assessBoundedWindowDuration(95_000, 10_000, 20_000).passed).toBe(false)
+    expect(assessBoundedWindowDuration(9_999, 10_000, 20_000).passed).toBe(false)
   })
 
   it('requires profile, quality tier, DPR, shadow, and lighting equality for restoration', () => {

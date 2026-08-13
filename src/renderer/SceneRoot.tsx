@@ -1,6 +1,6 @@
 import { ContactShadows, OrbitControls } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Group } from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 
@@ -22,18 +22,59 @@ import { getCatalogDefinition, resolveCatalogInstance } from '../catalog/catalog
 import { ResizeHandles } from './controls/ResizeHandles'
 import { TransformGizmo } from './controls/TransformGizmo'
 import { createInteractionController } from './controls/interaction-controller'
+import {
+  captureCameraSnapshot,
+  restoreCameraSnapshot,
+  type OrbitTargetRef,
+  type CameraSnapshotRef,
+} from './camera-snapshot'
 
 export type CameraIntent = 'idle' | 'zoom-in' | 'zoom-out' | 'top' | 'reset'
+type AppliedCameraIntent = Exclude<CameraIntent, 'idle'>
 
-function CameraControls({
+const noopCameraIntentConsumed = (): void => undefined
+
+export function CameraControls({
   intent,
   enabled,
+  cameraSnapshotRef,
+  orbitTargetRef,
+  onIntentConsumed,
 }: {
   readonly intent: CameraIntent
   readonly enabled: boolean
+  readonly cameraSnapshotRef?: CameraSnapshotRef
+  readonly orbitTargetRef?: OrbitTargetRef
+  readonly onIntentConsumed: (intent: AppliedCameraIntent) => void
 }) {
   const controls = useRef<OrbitControlsImpl>(null)
   const { camera } = useThree()
+
+  useLayoutEffect(() => {
+    const orbit = controls.current
+    if (!orbitTargetRef || !orbit) return
+    orbitTargetRef.current = orbit.target
+    return () => {
+      if (orbitTargetRef.current === orbit.target) orbitTargetRef.current = null
+    }
+  }, [orbitTargetRef])
+
+  useLayoutEffect(() => {
+    const snapshot = cameraSnapshotRef?.current
+    const orbit = controls.current
+    if (!snapshot || !orbit) return
+    restoreCameraSnapshot(camera, orbit, snapshot)
+    cameraSnapshotRef.current = null
+  }, [camera, cameraSnapshotRef])
+
+  useLayoutEffect(
+    () => () => {
+      const orbit = controls.current
+      if (!cameraSnapshotRef || !orbit) return
+      cameraSnapshotRef.current = captureCameraSnapshot(camera, orbit)
+    },
+    [camera, cameraSnapshotRef],
+  )
 
   useEffect(() => {
     const orbit = controls.current
@@ -46,7 +87,8 @@ function CameraControls({
     }
     if (intent === 'reset') orbit.reset()
     orbit.update()
-  }, [camera, intent])
+    onIntentConsumed(intent)
+  }, [camera, intent, onIntentConsumed])
 
   return (
     <OrbitControls
@@ -67,6 +109,9 @@ interface SceneRootProps {
   readonly selectedEntityIds: readonly string[]
   readonly outOfBoundsEntityIds: readonly string[]
   readonly cameraIntent: CameraIntent
+  readonly onIntentConsumed?: (intent: AppliedCameraIntent) => void
+  readonly cameraSnapshotRef?: CameraSnapshotRef
+  readonly orbitTargetRef?: OrbitTargetRef
   readonly store: EditorStore
   readonly mode: 'edit' | 'preview'
   readonly profile: RendererProfile
@@ -82,6 +127,9 @@ export function SceneRoot({
   selectedEntityIds,
   outOfBoundsEntityIds,
   cameraIntent,
+  onIntentConsumed = noopCameraIntentConsumed,
+  cameraSnapshotRef,
+  orbitTargetRef,
   store,
   mode,
   profile,
@@ -276,7 +324,13 @@ export function SceneRoot({
           onOrbitEnabledChange={setOrbitEnabled}
         />
       ) : null}
-      <CameraControls intent={cameraIntent} enabled={orbitEnabled} />
+      <CameraControls
+        intent={cameraIntent}
+        enabled={orbitEnabled}
+        onIntentConsumed={onIntentConsumed}
+        cameraSnapshotRef={cameraSnapshotRef}
+        orbitTargetRef={orbitTargetRef}
+      />
     </>
   )
 }

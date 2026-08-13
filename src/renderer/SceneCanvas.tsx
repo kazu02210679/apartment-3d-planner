@@ -26,6 +26,7 @@ import {
 } from '../domain/placement'
 import { FallbackPanel } from './FallbackPanel'
 import { RendererEvidenceBridge } from './EvidenceBridge'
+import type { CameraSnapshot, OrbitTargetRef } from './camera-snapshot'
 import {
   getRendererProfile,
   isWebGLAvailable,
@@ -36,7 +37,7 @@ import { SceneRoot, type CameraIntent } from './SceneRoot'
 import { createInteractionController } from './controls/interaction-controller'
 import { prioritizeResizeHandleIntersections } from './controls/handle-raycast'
 import { toRendererTransform } from './adapters'
-import type { Intersection } from 'three'
+import { PCFShadowMap, type Intersection } from 'three'
 
 function useSnapshot(store: EditorStore) {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
@@ -82,9 +83,7 @@ export function SceneCanvas({
   const profile = getRendererProfile(snapshot.mode, previewTier)
   const available = webglAvailable()
   const evidenceEnabled =
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).getAll('evidence').length === 1 &&
-    new URLSearchParams(window.location.search).get('evidence') === '1'
+    typeof window !== 'undefined' && window.location.search === '?evidence=1'
   useLayoutEffect(() => {
     if (!evidenceEnabled) return
     const fineGrained = window.__apartmentResizeFineGrainedEvidence
@@ -102,6 +101,8 @@ export function SceneCanvas({
       ) ?? null
   }, [evidenceEnabled, snapshot.interactionActive])
   const canvasRef = useRef<HTMLDivElement>(null)
+  const cameraSnapshotRef = useRef<CameraSnapshot | null>(null)
+  const orbitTargetRef = useRef<OrbitTargetRef['current']>(null)
   const [placementMenu, setPlacementMenu] = useState<
     { readonly entityId: string; readonly left: number; readonly top: number } | undefined
   >()
@@ -137,6 +138,12 @@ export function SceneCanvas({
     setCameraIntent('idle')
     queueMicrotask(() => setCameraIntent(intent))
   }
+  const onCameraIntentConsumed = useCallback((consumedIntent: CameraIntent) => {
+    if (consumedIntent === 'idle') return
+    setCameraIntent((currentIntent) =>
+      currentIntent === consumedIntent ? 'idle' : currentIntent,
+    )
+  }, [])
   const selectEntity = useCallback(
     (id: string) => {
       if (snapshot.mode === 'edit') store.selectEntity(id)
@@ -330,23 +337,32 @@ export function SceneCanvas({
       {available ? (
         <RendererErrorBoundary>
           <Canvas
+            key={`renderer-antialias-${profile.antialias ? 'on' : 'off'}`}
             className="scene-canvas__webgl"
             camera={{ fov: 45, near: 0.1, far: 100, position: [4.8, 3.8, 4.8] }}
             dpr={profile.dpr}
             fallback={<FallbackPanel />}
             gl={{ antialias: profile.antialias, alpha: false }}
-            shadows
+            shadows={{ enabled: true, type: PCFShadowMap }}
             events={createResizeHandleEvents}
             onPointerMissed={onCanvasPointerMissed}
           >
             {evidenceEnabled ? (
-              <RendererEvidenceBridge profile={profile} store={store} />
+              <RendererEvidenceBridge
+                profile={profile}
+                store={store}
+                onForcePreviewTier={setPreviewTier}
+                orbitTargetRef={orbitTargetRef}
+              />
             ) : null}
             <SceneRoot
               scene={snapshot.scene}
               selectedEntityIds={snapshot.selectedEntityIds}
               outOfBoundsEntityIds={snapshot.outOfBoundsEntityIds}
               cameraIntent={cameraIntent}
+              onIntentConsumed={onCameraIntentConsumed}
+              cameraSnapshotRef={cameraSnapshotRef}
+              orbitTargetRef={orbitTargetRef}
               store={store}
               mode={snapshot.mode}
               profile={profile}

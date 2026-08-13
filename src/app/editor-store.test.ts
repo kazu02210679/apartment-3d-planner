@@ -41,7 +41,9 @@ describe('EditorStore', () => {
       const entityId = store.addCatalogItem('desk.straight')!
       phases.length = 0
       expect(store.beginInteraction('resize entity')).toBe(true)
-      const entity = store.getSnapshot().scene.entities.find((item) => item.id === entityId)!
+      const entity = store
+        .getSnapshot()
+        .scene.entities.find((item) => item.id === entityId)!
       expect(
         store.updateInteractionGeometry(entityId, entity.transform, {
           ...entity.dimensions,
@@ -154,21 +156,35 @@ describe('EditorStore', () => {
   })
 
   it('cancels the active draft before every competing document gateway', () => {
-    const gateways: readonly [string, (store: ReturnType<typeof createEditorStore>, entityId: string, before: string) => unknown][] = [
+    const gateways: readonly [
+      string,
+      (
+        store: ReturnType<typeof createEditorStore>,
+        entityId: string,
+        before: string,
+      ) => unknown,
+    ][] = [
       ['undo', (store) => store.undo()],
       ['redo', (store) => store.redo()],
       ['delete', (store, entityId) => store.deleteEntity(entityId)],
       ['duplicate', (store, entityId) => store.duplicateEntity(entityId)],
       ['room', (store) => store.setRoomPreset('8-tatami')],
       ['catalog', (store) => store.addCatalogItem('display.monitor')],
-      ['dimensions', (store, entityId) => store.setDimensions(entityId, { width: 520, depth: 500, height: 1000 })],
+      [
+        'dimensions',
+        (store, entityId) =>
+          store.setDimensions(entityId, { width: 520, depth: 500, height: 1000 }),
+      ],
       ['import', (store, _entityId, before) => store.importJson(before)],
     ]
 
     for (const [label, gateway] of gateways) {
       const idFactory = ids()
       const store = createEditorStore({
-        initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+        initialScene: createEmptyScene('6-tatami', {
+          idFactory,
+          now: () => '2026-01-01',
+        }),
         idFactory,
       })
       const entityId = store.addCatalogItem('power.strip')!
@@ -439,6 +455,59 @@ describe('EditorStore', () => {
       kind: 'panel-with-stand',
       panel: { width: 531, height: 299 },
     })
+  })
+
+  it('routes non-positive monitor panel heights through catalog validation without mutation', () => {
+    const idFactory = ids()
+    const autosave = {
+      schedule: vi.fn(),
+      flush: () => ({ state: 'idle' as const }),
+      dispose: () => undefined,
+      getStatus: () => ({ state: 'idle' as const }),
+    }
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', { idFactory, now: () => '2026-01-01' }),
+      idFactory,
+      autosave,
+    })
+    const monitorId = store.addCatalogItem('display.monitor')!
+    const before = store.exportJson()
+    const historyBefore = {
+      canUndo: store.getSnapshot().canUndo,
+      canRedo: store.getSnapshot().canRedo,
+    }
+    autosave.schedule.mockClear()
+
+    for (const height of [120, 119]) {
+      expect(
+        store.setCatalogCustomDimensions(monitorId, {
+          width: 700,
+          depth: 220,
+          height,
+        }),
+      ).toBe(false)
+      expect(store.exportJson()).toBe(before)
+      expect(store.getSnapshot()).toMatchObject({
+        ...historyBefore,
+        errorMessage: 'geometry.panel.height must be a finite positive number.',
+      })
+      expect(autosave.schedule).not.toHaveBeenCalled()
+    }
+
+    expect(
+      store.setCatalogCustomDimensions(monitorId, {
+        width: 700,
+        depth: 220,
+        height: 520,
+      }),
+    ).toBe(true)
+    expect(
+      store.getSnapshot().scene.entities.find((entity) => entity.id === monitorId),
+    ).toMatchObject({
+      dimensions: { width: 700, depth: 220, height: 520 },
+      overrides: { geometry: { panel: { width: 700, height: 400 } } },
+    })
+    expect(autosave.schedule).toHaveBeenCalledTimes(1)
   })
 
   it('groups additive stable-ID selections in one action and does not steal selection after delete', () => {

@@ -102,14 +102,64 @@ export interface CdpTraceEvent {
   readonly dur?: number
   readonly pid?: number
   readonly tid?: number
+  readonly args?: Record<string, unknown>
+}
+
+export interface CdpExclusiveCpuEvent {
+  readonly name: string
+  readonly category: string
+  readonly eventExclusiveMs: number
+  readonly eventOverlapMs: number
+  readonly eventCount: number
+  readonly pid: number | null
+  readonly tid: number | null
+}
+
+export interface CdpThreadCoverage {
+  readonly pid: number | null
+  readonly tid: number | null
+  readonly name: string | null
+  readonly wallClockCoverageMs: number
+  readonly eventCount: number
+}
+
+export interface CdpMainThreadAttribution {
+  readonly pid: number | null
+  readonly tid: number | null
+  readonly name: string | null
+  readonly threadWallClockCoverageMs: number
+  readonly events: readonly CdpExclusiveCpuEvent[]
+}
+
+export interface CdpGpuAttribution {
+  readonly processIds: readonly number[]
+  readonly wallClockCoverageMs: number
+  readonly threadCoverage: readonly CdpThreadCoverage[]
+  readonly events: readonly CdpExclusiveCpuEvent[]
 }
 
 export interface CdpTraceSummary {
   readonly causalConclusion: 'UNRESOLVED'
   readonly causalLimit: string
+  readonly attributionMethod: 'same-thread-interval-union-with-per-event-exclusive-and-gpu-thread-coverage'
   readonly evidenceWindowStartTraceUs: number | null
+  readonly rendererMainThread: {
+    readonly pid: number
+    readonly tid: number
+    readonly name: string | null
+  } | null
+  readonly gpuProcessIds: readonly number[]
+  readonly warmup: {
+    readonly preWindowCount: number
+    readonly preWindowTotalMs: number
+    readonly inWindowCount: number
+    readonly inWindowTotalMs: number
+    readonly preWindowMaxMs: number | null
+    readonly inWindowMaxMs: number | null
+  }
   readonly longTasks: readonly {
     readonly task: LongTaskSample
+    readonly classification: 'measurement-window'
     readonly timelineEvents: readonly {
       readonly name: string
       readonly category: string
@@ -119,6 +169,8 @@ export interface CdpTraceSummary {
       readonly pid: number | null
       readonly tid: number | null
     }[]
+    readonly mainThreadCpu: CdpMainThreadAttribution
+    readonly gpu: CdpGpuAttribution
   }[]
 }
 
@@ -178,6 +230,8 @@ export interface RendererRuntimeSnapshot {
   } | null
   readonly qualityTier: 'high' | 'balanced' | 'safe' | 'edit' | null
 }
+
+export type EvidencePreviewTier = 'high' | 'balanced' | 'safe'
 
 export interface PageConsoleMessage {
   readonly type: string
@@ -501,19 +555,283 @@ export function classifyResizeSetup(witness: {
     : 'EVIDENCE_SETUP_UNRESOLVED'
 }
 
+export function assessBoundedWindowDuration(
+  observedMs: number,
+  minimumMs: number,
+  maximumMs: number,
+): {
+  readonly passed: boolean
+  readonly observedMs: number
+  readonly minimumMs: number
+  readonly maximumMs: number
+} {
+  return {
+    passed: observedMs >= minimumMs && observedMs <= maximumMs,
+    observedMs,
+    minimumMs,
+    maximumMs,
+  }
+}
+
+function roundCdpMs(value: number): number {
+  return Number(value.toFixed(3))
+}
+
+function cdpMetadata(events: readonly CdpTraceEvent[]) {
+  const threadNames = new Map<string, string>()
+  const processNames = new Map<number, string>()
+  for (const event of events) {
+    const metadataName = event.args?.name
+    if (typeof metadataName !== 'string') continue
+    if (
+      event.name === 'thread_name' &&
+      event.pid !== undefined &&
+      event.tid !== undefined
+    )
+      threadNames.set(`${event.pid}:${event.tid}`, metadataName)
+    if (event.name === 'process_name' && event.pid !== undefined)
+      processNames.set(event.pid, metadataName)
+  }
+  const rendererMain = [...threadNames.entries()]
+    .map(([key, name]) => ({ key, name }))
+    .find(({ name }) => /(?:^|\b)(?:CrRendererMain|RendererMain)(?:$|\b)/i.test(name))
+  const rendererMainThread = rendererMain
+    ? (() => {
+        const [pid, tid] = rendererMain.key.split(':').map(Number)
+        return { pid, tid, name: rendererMain.name }
+      })()
+    : null
+  const gpuProcessIds = [...processNames.entries()]
+    .filter(([, name]) => /gpu process/i.test(name))
+    .map(([pid]) => pid)
+  for (const [key, name] of threadNames) {
+    if (!/(?:gpu|viz)/i.test(name)) continue
+    const pid = Number(key.split(':', 1)[0])
+    if (!gpuProcessIds.includes(pid)) gpuProcessIds.push(pid)
+  }
+  return { threadNames, processNames, rendererMainThread, gpuProcessIds }
+}
+
+function cdpEventInterval(event: CdpTraceEvent, taskStartUs: number, taskEndUs: number) {
+  const eventEndUs = event.ts + (event.dur ?? 0)
+  const startUs = Math.max(taskStartUs, event.ts)
+  const endUs = Math.min(taskEndUs, eventEndUs)
+  if (endUs <= startUs) return null
+  return {
+    startMs: (startUs - taskStartUs) / 1_000,
+    endMs: (endUs - taskStartUs) / 1_000,
+  }
+}
+
+function cdpThreadKey(event: CdpTraceEvent): string {
+  return `${event.pid ?? 'null'}:${event.tid ?? 'null'}`
+}
+
+function isGpuCdpEvent(
+  event: CdpTraceEvent,
+  metadata: ReturnType<typeof cdpMetadata>,
+): boolean {
+  if (event.pid === undefined) return false
+  const threadName = metadata.threadNames.get(cdpThreadKey(event)) ?? ''
+  return (
+    metadata.gpuProcessIds.includes(event.pid) ||
+    /gpu|viz/i.test(event.cat ?? '') ||
+    /gpu|viz/i.test(event.name) ||
+    /gpu|viz/i.test(threadName)
+  )
+}
+
+function scopedCdpEvents(
+  events: readonly CdpTraceEvent[],
+  taskStartUs: number,
+  taskEndUs: number,
+  predicate: (event: CdpTraceEvent) => boolean,
+) {
+  return events.filter(
+    (event) =>
+      event.ph === 'X' &&
+      (event.dur ?? 0) > 0 &&
+      predicate(event) &&
+      cdpEventInterval(event, taskStartUs, taskEndUs) !== null,
+  )
+}
+
+function summarizeScopedCdpEvents(
+  events: readonly CdpTraceEvent[],
+  taskStartUs: number,
+  taskEndUs: number,
+): {
+  readonly threadWallClockCoverageMs: number
+  readonly events: readonly CdpExclusiveCpuEvent[]
+} {
+  const scoped = events
+    .map((event) => ({
+      event,
+      interval: cdpEventInterval(event, taskStartUs, taskEndUs)!,
+    }))
+    .sort(
+      (left, right) =>
+        left.interval.startMs - right.interval.startMs ||
+        right.interval.endMs - left.interval.endMs,
+    )
+  const summaryByKey = new Map<string, CdpExclusiveCpuEvent>()
+  const exclusiveFor = (entry: (typeof scoped)[number]) => {
+    const nested = scoped
+      .filter((candidate) => {
+        if (candidate === entry) return false
+        if (cdpThreadKey(candidate.event) !== cdpThreadKey(entry.event)) return false
+        const candidateInterval = candidate.interval
+        const entryInterval = entry.interval
+        return (
+          candidateInterval.startMs >= entryInterval.startMs &&
+          candidateInterval.endMs <= entryInterval.endMs &&
+          (candidateInterval.startMs > entryInterval.startMs ||
+            candidateInterval.endMs < entryInterval.endMs)
+        )
+      })
+      .map(({ interval }) => interval)
+    return Math.max(
+      0,
+      entry.interval.endMs - entry.interval.startMs - unionDuration(nested),
+    )
+  }
+  for (const entry of scoped) {
+    const { event } = entry
+    const key = `${event.name}\u0000${event.cat ?? ''}\u0000${event.pid ?? null}\u0000${event.tid ?? null}`
+    const current = summaryByKey.get(key)
+    summaryByKey.set(key, {
+      name: event.name,
+      category: event.cat ?? '',
+      eventExclusiveMs: roundCdpMs(
+        (current?.eventExclusiveMs ?? 0) + exclusiveFor(entry),
+      ),
+      eventOverlapMs: roundCdpMs(
+        (current?.eventOverlapMs ?? 0) + entry.interval.endMs - entry.interval.startMs,
+      ),
+      eventCount: (current?.eventCount ?? 0) + 1,
+      pid: event.pid ?? null,
+      tid: event.tid ?? null,
+    })
+  }
+  return {
+    threadWallClockCoverageMs: roundCdpMs(
+      unionDuration(scoped.map(({ interval }) => interval)),
+    ),
+    events: [...summaryByKey.values()]
+      .sort(
+        (left, right) =>
+          right.eventExclusiveMs - left.eventExclusiveMs ||
+          left.name.localeCompare(right.name),
+      )
+      .slice(0, 100),
+  }
+}
+
+function chooseRendererMainThread(
+  events: readonly CdpTraceEvent[],
+  taskStartUs: number,
+  taskEndUs: number,
+  explicit: {
+    readonly pid: number
+    readonly tid: number
+    readonly name: string | null
+  } | null,
+): {
+  readonly pid: number | null
+  readonly tid: number | null
+  readonly name: string | null
+} {
+  if (explicit) return explicit
+  const candidateScores = new Map<string, { pid: number; tid: number; score: number }>()
+  for (const event of scopedCdpEvents(
+    events,
+    taskStartUs,
+    taskEndUs,
+    (candidate) =>
+      candidate.pid !== undefined &&
+      candidate.tid !== undefined &&
+      !/gpu|viz/i.test(candidate.cat ?? '') &&
+      !/gpu|viz/i.test(candidate.name),
+  )) {
+    const key = cdpThreadKey(event)
+    const current = candidateScores.get(key)
+    candidateScores.set(key, {
+      pid: event.pid!,
+      tid: event.tid!,
+      score: (current?.score ?? 0) + (event.dur ?? 0),
+    })
+  }
+  const selected = [...candidateScores.values()].sort(
+    (left, right) => right.score - left.score,
+  )[0]
+  return selected
+    ? { pid: selected.pid, tid: selected.tid, name: null }
+    : { pid: null, tid: null, name: null }
+}
+
 export function summarizeCdpTrace(
   events: readonly CdpTraceEvent[],
   longTasks: readonly LongTaskSample[],
+  preWindowLongTasks: readonly LongTaskSample[] = [],
 ): CdpTraceSummary {
   const marker = events.find((event) => event.name === 'ac007:evidence-window-start')
   const markerUs = marker?.ts ?? null
+  const metadata = cdpMetadata(events)
+  const rendererMainThread =
+    metadata.rendererMainThread ??
+    (markerUs !== null && longTasks[0]
+      ? chooseRendererMainThread(
+          events,
+          markerUs + longTasks[0].startMs * 1_000,
+          markerUs + (longTasks[0].startMs + longTasks[0].durationMs) * 1_000,
+          null,
+        )
+      : null)
   return {
     causalConclusion: 'UNRESOLVED',
     causalLimit:
-      'CDP timeline events and UserTiming marks establish nesting and temporal overlap, but do not by themselves prove which product, browser, GPU, or GC activity caused the Long Task duration.',
+      'Event-exclusive fields subtract only nested intervals on the same pid/tid. Main-thread and GPU totals are clipped interval unions; GPU thread coverage is reported separately and parallel threads are not summed as causal time. Warm-up remains separate, and these observations do not prove product causality.',
+    attributionMethod:
+      'same-thread-interval-union-with-per-event-exclusive-and-gpu-thread-coverage',
     evidenceWindowStartTraceUs: markerUs,
+    rendererMainThread,
+    gpuProcessIds: metadata.gpuProcessIds,
+    warmup: {
+      preWindowCount: preWindowLongTasks.length,
+      preWindowTotalMs: roundCdpMs(
+        preWindowLongTasks.reduce((total, task) => total + task.durationMs, 0),
+      ),
+      inWindowCount: longTasks.length,
+      inWindowTotalMs: roundCdpMs(
+        longTasks.reduce((total, task) => total + task.durationMs, 0),
+      ),
+      preWindowMaxMs: preWindowLongTasks.length
+        ? Math.max(...preWindowLongTasks.map((task) => task.durationMs))
+        : null,
+      inWindowMaxMs: longTasks.length
+        ? Math.max(...longTasks.map((task) => task.durationMs))
+        : null,
+    },
     longTasks: longTasks.map((task) => {
-      if (markerUs === null) return { task, timelineEvents: [] }
+      if (markerUs === null)
+        return {
+          task,
+          classification: 'measurement-window' as const,
+          timelineEvents: [],
+          mainThreadCpu: {
+            pid: null,
+            tid: null,
+            name: null,
+            threadWallClockCoverageMs: 0,
+            events: [],
+          },
+          gpu: {
+            processIds: metadata.gpuProcessIds,
+            wallClockCoverageMs: 0,
+            threadCoverage: [],
+            events: [],
+          },
+        }
       const taskStartUs = markerUs + task.startMs * 1_000
       const taskEndUs = taskStartUs + task.durationMs * 1_000
       const overlappingEvents = events
@@ -553,7 +871,92 @@ export function summarizeCdpTrace(
             right.overlapMs - left.overlapMs || left.name.localeCompare(right.name),
         )
         .slice(0, 100)
-      return { task, timelineEvents }
+      const mainThread = chooseRendererMainThread(
+        events,
+        taskStartUs,
+        taskEndUs,
+        rendererMainThread,
+      )
+      const mainThreadEvents = scopedCdpEvents(
+        events,
+        taskStartUs,
+        taskEndUs,
+        (event) => event.pid === mainThread.pid && event.tid === mainThread.tid,
+      )
+      const mainThreadCpu = summarizeScopedCdpEvents(
+        mainThreadEvents,
+        taskStartUs,
+        taskEndUs,
+      )
+      const gpuEvents = scopedCdpEvents(events, taskStartUs, taskEndUs, (event) =>
+        isGpuCdpEvent(event, metadata),
+      )
+      const gpuSummary = summarizeScopedCdpEvents(gpuEvents, taskStartUs, taskEndUs)
+      const gpuIntervals = gpuEvents.map((event) =>
+        cdpEventInterval(event, taskStartUs, taskEndUs)!,
+      )
+      const gpuEventsByThread = new Map<string, CdpTraceEvent[]>()
+      for (const event of gpuEvents) {
+        const key = cdpThreadKey(event)
+        const threadEvents = gpuEventsByThread.get(key) ?? []
+        threadEvents.push(event)
+        gpuEventsByThread.set(key, threadEvents)
+      }
+      const gpuThreadCoverage = [...gpuEventsByThread.entries()]
+        .map(([key, threadEvents]) => {
+          const threadSummary = summarizeScopedCdpEvents(
+            threadEvents,
+            taskStartUs,
+            taskEndUs,
+          )
+          const [pidText, tidText] = key.split(':')
+          const pid = Number(pidText)
+          const tid = Number(tidText)
+          return {
+            pid: Number.isFinite(pid) ? pid : null,
+            tid: Number.isFinite(tid) ? tid : null,
+            name: metadata.threadNames.get(key) ?? null,
+            wallClockCoverageMs: threadSummary.threadWallClockCoverageMs,
+            eventCount: threadEvents.length,
+          }
+        })
+        .sort(
+          (left, right) =>
+            (left.pid ?? Number.MAX_SAFE_INTEGER) -
+              (right.pid ?? Number.MAX_SAFE_INTEGER) ||
+            (left.tid ?? Number.MAX_SAFE_INTEGER) -
+              (right.tid ?? Number.MAX_SAFE_INTEGER),
+        )
+      const gpuProcessIds = [
+        ...new Set([
+          ...metadata.gpuProcessIds,
+          ...gpuEvents
+            .map((event) => event.pid)
+            .filter((pid): pid is number => pid !== undefined),
+        ]),
+      ].sort((left, right) => left - right)
+      return {
+        task,
+        classification: 'measurement-window' as const,
+        timelineEvents,
+        mainThreadCpu: {
+          pid: mainThread.pid,
+          tid: mainThread.tid,
+          name:
+            mainThread.name ??
+            (mainThread.pid !== null && mainThread.tid !== null
+              ? (metadata.threadNames.get(`${mainThread.pid}:${mainThread.tid}`) ?? null)
+              : null),
+          threadWallClockCoverageMs: mainThreadCpu.threadWallClockCoverageMs,
+          events: mainThreadCpu.events,
+        },
+        gpu: {
+          processIds: gpuProcessIds,
+          wallClockCoverageMs: roundCdpMs(unionDuration(gpuIntervals)),
+          threadCoverage: gpuThreadCoverage,
+          events: gpuSummary.events,
+        },
+      }
     }),
   }
 }
@@ -580,6 +983,12 @@ export function classifyConsoleMessage(
 
 export function digestJson(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+}
+
+export function resolvePreWindowLongTasks(
+  preWindowLongTasks: readonly LongTaskSample[] | undefined,
+): readonly LongTaskSample[] {
+  return preWindowLongTasks ?? []
 }
 
 export function installEvidenceProbe(page: Page): Promise<void> {
@@ -1353,6 +1762,53 @@ export async function readRendererEvidenceCounters(
   })
 }
 
+export async function forceEvidencePreviewTier(
+  page: Page,
+  tier: EvidencePreviewTier,
+  timeoutMs = 10_000,
+): Promise<RendererRuntimeSnapshot> {
+  await page.evaluate((nextTier) => {
+    if (new URL(window.location.href).search !== '?evidence=1')
+      throw new Error(
+        'EVIDENCE_SETUP_UNRESOLVED: forced preview tier requires ?evidence=1.',
+      )
+    const bridge = (
+      window as unknown as {
+        __apartmentRendererEvidence?: {
+          forcePreviewTier(value: EvidencePreviewTier): void
+        }
+      }
+    ).__apartmentRendererEvidence
+    if (!bridge)
+      throw new Error('EVIDENCE_SETUP_UNRESOLVED: renderer evidence bridge is absent.')
+    bridge.forcePreviewTier(nextTier)
+  }, tier)
+  await page.waitForFunction(
+    (nextTier) => {
+      const bridge = (
+        window as unknown as {
+          __apartmentRendererEvidence?: {
+            getSnapshot(): {
+              gl?: { domElement?: HTMLCanvasElement }
+              profile?: { id?: string; qualityTier?: string }
+            }
+          }
+        }
+      ).__apartmentRendererEvidence
+      const snapshot = bridge?.getSnapshot()
+      return Boolean(
+        snapshot?.gl?.domElement?.isConnected &&
+        snapshot.profile?.id === 'preview' &&
+        snapshot.profile.qualityTier === nextTier,
+      )
+    },
+    tier,
+    { timeout: timeoutMs },
+  )
+  await waitForStableFrames(page, 2, timeoutMs)
+  return waitForRendererEvidence(page, timeoutMs)
+}
+
 export async function waitForStableFrames(
   page: Page,
   stableFrameCount = 2,
@@ -1680,9 +2136,32 @@ export async function orbitForWindow(
   durationMs: number,
   updateCount: number,
   pointerAlreadyAtStart = false,
-): Promise<void> {
+): Promise<{ readonly elapsedMs: number; readonly updateCount: number }> {
   if (!pointerAlreadyAtStart) await page.mouse.move(center.x, center.y)
   await page.mouse.down()
+  try {
+    return await runScheduledPointerMoves(
+      page,
+      center,
+      radius,
+      durationMs,
+      updateCount,
+      true,
+    )
+  } finally {
+    await page.mouse.up()
+  }
+}
+
+async function runScheduledPointerMoves(
+  page: Page,
+  center: { readonly x: number; readonly y: number },
+  radius: number,
+  durationMs: number,
+  updateCount: number,
+  pointerAlreadyAtStart: boolean,
+): Promise<{ readonly elapsedMs: number; readonly updateCount: number }> {
+  if (!pointerAlreadyAtStart) await page.mouse.move(center.x, center.y)
   const startedAt = Date.now()
   for (let index = 1; index <= updateCount; index += 1) {
     const targetAt = startedAt + (durationMs * index) / updateCount
@@ -1698,7 +2177,17 @@ export async function orbitForWindow(
   const remaining = startedAt + durationMs - Date.now()
   if (remaining > 0)
     await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, remaining))
-  await page.mouse.up()
+  return { elapsedMs: Date.now() - startedAt, updateCount }
+}
+
+export async function inertPointerMoveTransportBaseline(
+  page: Page,
+  center: { readonly x: number; readonly y: number },
+  radius: number,
+  durationMs: number,
+  updateCount: number,
+): Promise<{ readonly elapsedMs: number; readonly updateCount: number }> {
+  return runScheduledPointerMoves(page, center, radius, durationMs, updateCount, false)
 }
 
 export function assessFrameWindow(
@@ -1833,7 +2322,10 @@ export async function startChromiumCdpTrace(
   page: Page,
   name: string,
 ): Promise<{
-  stop(longTasks: readonly LongTaskSample[]): Promise<{
+  stop(
+    longTasks: readonly LongTaskSample[],
+    preWindowLongTasks?: readonly LongTaskSample[],
+  ): Promise<{
     readonly tracePath: string
     readonly attributionPath: string
     readonly traceSizeBytes: number
@@ -1862,7 +2354,7 @@ export async function startChromiumCdpTrace(
     },
   })
   return {
-    stop: async (longTasks) => {
+    stop: async (longTasks, preWindowLongTasks = []) => {
       const completed = new Promise<string>((resolvePromise, rejectPromise) => {
         session.once('Tracing.tracingComplete', (event: { readonly stream?: string }) => {
           if (event.stream) resolvePromise(event.stream)
@@ -1874,7 +2366,11 @@ export async function startChromiumCdpTrace(
       const parsed = JSON.parse(traceBuffer.toString('utf8')) as {
         readonly traceEvents?: readonly CdpTraceEvent[]
       }
-      const summary = summarizeCdpTrace(parsed.traceEvents ?? [], longTasks)
+      const summary = summarizeCdpTrace(
+        parsed.traceEvents ?? [],
+        longTasks,
+        resolvePreWindowLongTasks(preWindowLongTasks),
+      )
       const traceRoot = join(
         resolve(process.cwd()),
         'docs',

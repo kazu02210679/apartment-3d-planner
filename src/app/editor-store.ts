@@ -157,10 +157,12 @@ function clone<T>(value: T): T {
 function startResizeEvidencePhase(phase: string): number | null {
   if (typeof window === 'undefined') return null
   return (
-    window as typeof window & {
-      __apartmentEvidenceProbe?: { startPhase: (name: string) => number | null }
-    }
-  ).__apartmentEvidenceProbe?.startPhase(phase) ?? null
+    (
+      window as typeof window & {
+        __apartmentEvidenceProbe?: { startPhase: (name: string) => number | null }
+      }
+    ).__apartmentEvidenceProbe?.startPhase(phase) ?? null
+  )
 }
 
 function endResizeEvidencePhase(token: number | null): void {
@@ -212,11 +214,11 @@ function isRendererDraftRegistration(
   return (
     typeof candidate.onCancel === 'function' &&
     [target?.position, target?.rotation, target?.scale].every(
-    (vector) =>
-      vector &&
-      Number.isFinite(vector.x) &&
-      Number.isFinite(vector.y) &&
-      Number.isFinite(vector.z),
+      (vector) =>
+        vector &&
+        Number.isFinite(vector.x) &&
+        Number.isFinite(vector.y) &&
+        Number.isFinite(vector.z),
     )
   )
 }
@@ -443,7 +445,6 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       const standAllowance =
         definition.defaultDimensions.height - definition.geometry.panel.height
       const panelHeight = dimensions.height - standAllowance
-      if (panelHeight <= 0) return undefined
       const existingPanel =
         existingGeometry.panel &&
         typeof existingGeometry.panel === 'object' &&

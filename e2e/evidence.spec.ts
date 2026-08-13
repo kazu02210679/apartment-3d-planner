@@ -2,10 +2,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import { expect, test, type Browser, type Page } from '@playwright/test'
+import { PCFShadowMap } from 'three'
 
 import { createPerformanceScene } from '../src/test/performance-scene'
+import { getRendererProfile, type PreviewQualityTier } from '../src/renderer/quality'
 import {
   assessAutosaveEvidence,
+  assessBoundedWindowDuration,
   assessFrameWindow,
   attachPageDiagnostics,
   classifyResizeSetup,
@@ -13,7 +16,9 @@ import {
   digestJson,
   dragForWindow,
   endEvidencePhase,
+  forceEvidencePreviewTier,
   installEvidenceProbe,
+  inertPointerMoveTransportBaseline,
   longTasksOverlappingPhases,
   mergeDiagnostics,
   orbitForWindow,
@@ -46,6 +51,7 @@ import {
 const VIEWPORT = { width: 1440, height: 900 } as const
 const LONG_WINDOW_MS = 5_000
 const PREVIEW_WINDOW_MS = 10_000
+const PREVIEW_WINDOW_MAX_MS = 20_000
 const LONG_UPDATE_COUNT = 360
 const SINGLE_UPDATE_COUNT = 1
 const WARMUP_UPDATE_COUNT = 4
@@ -85,6 +91,190 @@ async function exportedScene(page: Page): Promise<string> {
   return json
 }
 
+type CameraOrbitSnapshot = {
+  readonly position: readonly [number, number, number] | null
+  readonly quaternion: readonly [number, number, number, number] | null
+  readonly zoom: number | null
+  readonly target: readonly [number, number, number] | null
+}
+
+const CAMERA_STATE_TOLERANCE = 1e-3
+const CAMERA_SETTLE_TOLERANCE = 1e-4
+const CAMERA_SETTLE_TIMEOUT_MS = 5_000
+const CAMERA_SETTLE_SAMPLE_INTERVAL_MS = 16
+const CAMERA_SETTLE_CONSECUTIVE_SAMPLES = 4
+
+async function readCameraOrbitSnapshot(page: Page): Promise<CameraOrbitSnapshot> {
+  return page.evaluate(() => {
+    const bridge = (
+      window as unknown as {
+        __apartmentRendererEvidence?: {
+          getSnapshot(): {
+            camera?: {
+              position?: { x?: number; y?: number; z?: number }
+              quaternion?: { x?: number; y?: number; z?: number; w?: number }
+              zoom?: number
+            }
+            orbitTarget?: readonly number[] | null
+          }
+        }
+      }
+    ).__apartmentRendererEvidence
+    const state = bridge?.getSnapshot()
+    const camera = state?.camera
+    const finite = (value: unknown): value is number =>
+      typeof value === 'number' && Number.isFinite(value)
+    const position = camera?.position
+    const quaternion = camera?.quaternion
+    const target = state?.orbitTarget
+    return {
+      position:
+        position && finite(position.x) && finite(position.y) && finite(position.z)
+          ? ([position.x, position.y, position.z] as const)
+          : null,
+      quaternion:
+        quaternion &&
+        finite(quaternion.x) &&
+        finite(quaternion.y) &&
+        finite(quaternion.z) &&
+        finite(quaternion.w)
+          ? ([quaternion.x, quaternion.y, quaternion.z, quaternion.w] as const)
+          : null,
+      zoom: finite(camera?.zoom) ? camera.zoom : null,
+      target:
+        target?.length === 3 && target.every(finite)
+          ? ([target[0]!, target[1]!, target[2]!] as const)
+          : null,
+    }
+  })
+}
+
+function cameraOrbitSnapshotsEqualWithin(
+  left: CameraOrbitSnapshot,
+  right: CameraOrbitSnapshot,
+  tolerance: number,
+): boolean {
+  const arraysEqual = (
+    first: readonly number[] | null,
+    second: readonly number[] | null,
+  ) =>
+    first !== null &&
+    second !== null &&
+    first.length === second.length &&
+    first.every((value, index) => Math.abs(value - second[index]!) <= tolerance)
+  return (
+    arraysEqual(left.position, right.position) &&
+    arraysEqual(left.quaternion, right.quaternion) &&
+    left.zoom !== null &&
+    right.zoom !== null &&
+    Math.abs(left.zoom - right.zoom) <= tolerance &&
+    arraysEqual(left.target, right.target)
+  )
+}
+
+function cameraOrbitSnapshotsApproximatelyEqual(
+  left: CameraOrbitSnapshot,
+  right: CameraOrbitSnapshot,
+): boolean {
+  return cameraOrbitSnapshotsEqualWithin(left, right, CAMERA_STATE_TOLERANCE)
+}
+
+function cameraOrbitSnapshotIsComplete(snapshot: CameraOrbitSnapshot): boolean {
+  return (
+    snapshot.position !== null &&
+    snapshot.quaternion !== null &&
+    snapshot.zoom !== null &&
+    snapshot.target !== null
+  )
+}
+
+type CameraSettledResult = {
+  readonly status: 'SETTLED' | 'TIMEOUT' | 'UNAVAILABLE'
+  readonly elapsedMs: number
+  readonly sampleCount: number
+  readonly validSampleCount: number
+  readonly consecutiveStableSamples: number
+  readonly tolerance: number
+  readonly requiredConsecutiveSamples: number
+  readonly lastSnapshot: CameraOrbitSnapshot | null
+}
+
+async function waitForCameraSettled(
+  page: Page,
+  options: {
+    readonly timeoutMs?: number
+    readonly sampleIntervalMs?: number
+    readonly consecutiveSamples?: number
+  } = {},
+): Promise<CameraSettledResult> {
+  const timeoutMs = options.timeoutMs ?? CAMERA_SETTLE_TIMEOUT_MS
+  const sampleIntervalMs = options.sampleIntervalMs ?? CAMERA_SETTLE_SAMPLE_INTERVAL_MS
+  const requiredConsecutiveSamples =
+    options.consecutiveSamples ?? CAMERA_SETTLE_CONSECUTIVE_SAMPLES
+  const startedAt = Date.now()
+  let previous: CameraOrbitSnapshot | null = null
+  let lastSnapshot: CameraOrbitSnapshot | null = null
+  let sampleCount = 0
+  let validSampleCount = 0
+  let consecutiveStableSamples = 0
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const current = await readCameraOrbitSnapshot(page)
+    sampleCount += 1
+    lastSnapshot = current
+    if (cameraOrbitSnapshotIsComplete(current)) {
+      validSampleCount += 1
+      consecutiveStableSamples =
+        previous !== null &&
+        cameraOrbitSnapshotsEqualWithin(previous, current, CAMERA_SETTLE_TOLERANCE)
+          ? consecutiveStableSamples + 1
+          : 1
+      previous = current
+      if (consecutiveStableSamples >= requiredConsecutiveSamples) {
+        return {
+          status: 'SETTLED',
+          elapsedMs: Date.now() - startedAt,
+          sampleCount,
+          validSampleCount,
+          consecutiveStableSamples,
+          tolerance: CAMERA_SETTLE_TOLERANCE,
+          requiredConsecutiveSamples,
+          lastSnapshot,
+        }
+      }
+    } else {
+      previous = null
+      consecutiveStableSamples = 0
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, sampleIntervalMs))
+  }
+
+  return {
+    status: validSampleCount === 0 ? 'UNAVAILABLE' : 'TIMEOUT',
+    elapsedMs: Date.now() - startedAt,
+    sampleCount,
+    validSampleCount,
+    consecutiveStableSamples,
+    tolerance: CAMERA_SETTLE_TOLERANCE,
+    requiredConsecutiveSamples,
+    lastSnapshot,
+  }
+}
+
+async function exportedSceneWithoutPointerInteraction(page: Page): Promise<string> {
+  const downloadPromise = page.waitForEvent('download')
+  await page.locator('header .toolbar-button--export').evaluate((element) => {
+    if (!(element instanceof HTMLButtonElement))
+      throw new Error('Expected the scene export control to be a button.')
+    element.click()
+  })
+  const stream = await (await downloadPromise).createReadStream()
+  if (!stream) throw new Error('Expected a JSON export stream.')
+  let json = ''
+  for await (const chunk of stream) json += chunk.toString()
+  return json
+}
+
 function fixtureFile(fixture: unknown, name: string) {
   return {
     name,
@@ -114,6 +304,27 @@ async function openEvidencePage(page: Page): Promise<RendererRuntimeSnapshot> {
   await page.goto('/?evidence=1')
   await expect(page.getByTestId('scene-canvas')).toBeVisible()
   return waitForRendererEvidence(page)
+}
+
+async function findInertPointerPoint(page: Page): Promise<Point> {
+  return page.evaluate(() => {
+    const candidates = [
+      [8, 8],
+      [window.innerWidth - 8, 8],
+      [8, window.innerHeight - 8],
+      [window.innerWidth - 8, window.innerHeight - 8],
+    ] as const
+    for (const [x, y] of candidates) {
+      const element = document.elementFromPoint(x, y)
+      if (
+        !element ||
+        element.closest('canvas,button,input,a,select,textarea,[role="button"]')
+      )
+        continue
+      return { x, y }
+    }
+    return { x: 8, y: 8 }
+  })
 }
 
 async function waitForPoint(
@@ -242,6 +453,31 @@ function rendererRuntimeObservable(runtime: RendererRuntimeSnapshot) {
     runtime.renderer.lighting.lights.length > 0 &&
     runtime.profile !== null &&
     runtime.qualityTier !== null
+  )
+}
+
+function rendererTierMatches(
+  runtime: RendererRuntimeSnapshot,
+  tier: PreviewQualityTier,
+): boolean {
+  const expected = getRendererProfile('preview', tier)
+  const renderer = runtime.renderer
+  if (!renderer || runtime.profile !== 'preview' || runtime.qualityTier !== tier)
+    return false
+  const pixelRatioInRange =
+    renderer.pixelRatio !== null &&
+    renderer.pixelRatio >= expected.dpr[0] - 0.001 &&
+    renderer.pixelRatio <= expected.dpr[1] + 0.001
+  return (
+    renderer.antialias === expected.antialias &&
+    renderer.antialias === renderer.configuredAntialias &&
+    pixelRatioInRange &&
+    JSON.stringify(renderer.configuredDpr) === JSON.stringify(expected.dpr) &&
+    renderer.shadowMapType === PCFShadowMap &&
+    renderer.shadowMapSizes.includes(expected.shadowMapSize) &&
+    renderer.configuredShadowMapSize === expected.shadowMapSize &&
+    Math.abs((renderer.toneMappingExposure ?? Number.NaN) - expected.exposure) < 0.001 &&
+    Math.abs(renderer.configuredExposure - expected.exposure) < 0.001
   )
 }
 
@@ -572,17 +808,9 @@ async function runResizeDiagnosticMeasurement(
   const strictBefore = await readResizeGeometryWitness(page, targetId)
   let strictTransient: ResizeGeometryWitness | null = null
   await startEvidenceWindow(page, label)
-  await dragForWindow(
-    page,
-    start,
-    end,
-    LONG_WINDOW_MS,
-    updateCount,
-    true,
-    async () => {
-      strictTransient = await readResizeGeometryWitness(page, targetId)
-    },
-  )
+  await dragForWindow(page, start, end, LONG_WINDOW_MS, updateCount, true, async () => {
+    strictTransient = await readResizeGeometryWitness(page, targetId)
+  })
   const stable = await settleInteractionWindow(page)
   const probe = await stopEvidenceWindow(page)
   const counters = await readRendererEvidenceCounters(page)
@@ -821,8 +1049,11 @@ async function runCancelledResizeWarmup(
     },
     {
       name: 'warmup-autosave-storage-writes',
-      passed: probe.storageWrites.filter((write) => write.key === 'home-lab-scene').length === 0,
-      observed: probe.storageWrites.filter((write) => write.key === 'home-lab-scene').length,
+      passed:
+        probe.storageWrites.filter((write) => write.key === 'home-lab-scene').length ===
+        0,
+      observed: probe.storageWrites.filter((write) => write.key === 'home-lab-scene')
+        .length,
       threshold: 0,
     },
     {
@@ -917,7 +1148,10 @@ test('AC-007 resize diagnostic A compares 360 updates with one update', async ({
         afterDigest: digestJson(summaryAfter),
         unchanged: summaryBefore === summaryAfter,
       },
-      hypothesisUpdate: { updateCountDependence: 'UNRESOLVED', causalConclusion: 'UNRESOLVED' },
+      hypothesisUpdate: {
+        updateCountDependence: 'UNRESOLVED',
+        causalConclusion: 'UNRESOLVED',
+      },
       notes: [
         'Calibration did not prove a real production resize; no performance window was run.',
         'Diagnostic artifacts are written outside the normal raw/summary projection.',
@@ -1032,7 +1266,8 @@ test('AC-007 resize diagnostic A compares 360 updates with one update', async ({
         updates360: baseline.phaseDurationsMs.commit,
         update1: single.phaseDurationsMs.commit,
         differenceOneMinus360Ms:
-          baseline.phaseDurationsMs.commit === null || single.phaseDurationsMs.commit === null
+          baseline.phaseDurationsMs.commit === null ||
+          single.phaseDurationsMs.commit === null
             ? null
             : single.phaseDurationsMs.commit - baseline.phaseDurationsMs.commit,
       },
@@ -1104,7 +1339,11 @@ test('AC-007 resize diagnostic B compares a cancelled warm-up with the 360-updat
     return
   }
 
-  const targetId = await loadFixture(page, fixture, 'ac-007-resize-diagnostic-warmup.json')
+  const targetId = await loadFixture(
+    page,
+    fixture,
+    'ac-007-resize-diagnostic-warmup.json',
+  )
   await page.getByTestId('tool-resize').click()
   const start = await waitForPoint(
     () => projectedObjectPoint(page, calibration.readyCase!.handleName),
@@ -1237,60 +1476,56 @@ test('AC-007 resize diagnostic C measures the first resize in a fresh context wi
   const calibration = await calibrateResizeHandle(calibrationPage, fixture)
   if (!calibration.readyCase) {
     const summaryAfter = readExistingEvidenceFile(summaryPath)
-    await persistDiagnosticArtifact(
-      testInfo,
-      'ac-007-resize-diagnostic-fresh-1-update',
-      {
-        schemaVersion: 1,
-        criterion: 'AC-007',
-        diagnostic: 'C',
-        run: 'resize-diagnostic-fresh-1-update',
-        status: 'UNRESOLVED',
-        environment: await environment(calibrationPage, browser),
-        fixture: { entityCount: fixture.entities.length, sha256: digestJson(fixture) },
-        viewport: VIEWPORT,
-        configuration: {
-          durationMs: LONG_WINDOW_MS,
-          updateCount: SINGLE_UPDATE_COUNT,
-          explicitResizeWarmup: false,
-          measurementContext: 'not-created-because-calibration-failed',
-        },
-        calibration,
-        measurement: null,
-        checks: [
-          {
-            name: 'resize-calibration-real-transient-change',
-            passed: false,
-            observed: 'no ready handle',
-            threshold: 'ready handle',
-          },
-        ],
-        diagnostics: {
-          calibration: diagnosticsFor(
-            calibrationPageDiagnostics,
-            await readProbeDiagnostics(calibrationPage),
-          ),
-          measurement: null,
-        },
-        summaryProjection: {
-          summaryPath: 'docs/reports/evidence/verification-summary.json',
-          beforeDigest: digestJson(summaryBefore),
-          afterDigest: digestJson(summaryAfter),
-          unchanged: summaryBefore === summaryAfter,
-        },
-        hypothesisUpdate: {
-          pointerdownLongTaskMs: null,
-          updateCountDependence: 'UNRESOLVED',
-          initialOrLazySetupCost: 'UNRESOLVED',
-          residualExplanation: 'calibration-failed',
-          causalConclusion: 'UNRESOLVED',
-        },
-        notes: [
-          'Calibration did not prove a real production resize; the fresh measurement context was not created.',
-          'No CDP trace is generated; this artifact is not projected into verification-summary.json.',
-        ],
+    await persistDiagnosticArtifact(testInfo, 'ac-007-resize-diagnostic-fresh-1-update', {
+      schemaVersion: 1,
+      criterion: 'AC-007',
+      diagnostic: 'C',
+      run: 'resize-diagnostic-fresh-1-update',
+      status: 'UNRESOLVED',
+      environment: await environment(calibrationPage, browser),
+      fixture: { entityCount: fixture.entities.length, sha256: digestJson(fixture) },
+      viewport: VIEWPORT,
+      configuration: {
+        durationMs: LONG_WINDOW_MS,
+        updateCount: SINGLE_UPDATE_COUNT,
+        explicitResizeWarmup: false,
+        measurementContext: 'not-created-because-calibration-failed',
       },
-    )
+      calibration,
+      measurement: null,
+      checks: [
+        {
+          name: 'resize-calibration-real-transient-change',
+          passed: false,
+          observed: 'no ready handle',
+          threshold: 'ready handle',
+        },
+      ],
+      diagnostics: {
+        calibration: diagnosticsFor(
+          calibrationPageDiagnostics,
+          await readProbeDiagnostics(calibrationPage),
+        ),
+        measurement: null,
+      },
+      summaryProjection: {
+        summaryPath: 'docs/reports/evidence/verification-summary.json',
+        beforeDigest: digestJson(summaryBefore),
+        afterDigest: digestJson(summaryAfter),
+        unchanged: summaryBefore === summaryAfter,
+      },
+      hypothesisUpdate: {
+        pointerdownLongTaskMs: null,
+        updateCountDependence: 'UNRESOLVED',
+        initialOrLazySetupCost: 'UNRESOLVED',
+        residualExplanation: 'calibration-failed',
+        causalConclusion: 'UNRESOLVED',
+      },
+      notes: [
+        'Calibration did not prove a real production resize; the fresh measurement context was not created.',
+        'No CDP trace is generated; this artifact is not projected into verification-summary.json.',
+      ],
+    })
     return
   }
 
@@ -1350,82 +1585,78 @@ test('AC-007 resize diagnostic C measures the first resize in a fresh context wi
         threshold: 'unchanged',
       },
     ]
-    await persistDiagnosticArtifact(
-      testInfo,
-      'ac-007-resize-diagnostic-fresh-1-update',
-      {
-        schemaVersion: 1,
-        criterion: 'AC-007',
-        diagnostic: 'C',
-        run: 'resize-diagnostic-fresh-1-update',
-        status:
-          checks.every((check) => check.passed) && measurement.status === 'PASS'
-            ? 'PASS'
-            : 'UNRESOLVED',
-        environment: await environment(measurementPage, browser),
-        fixture: { entityCount: fixture.entities.length, sha256: digestJson(fixture) },
-        viewport: VIEWPORT,
-        configuration: {
-          durationMs: LONG_WINDOW_MS,
-          updateCount: SINGLE_UPDATE_COUNT,
-          changedVariable: 'fresh browser context and run order',
-          explicitResizeWarmup: false,
-          observerInstalledBeforeNavigation: true,
-          calibrationContextSeparatedFromMeasurementContext: true,
-        },
-        calibration,
-        measurement,
-        longTaskClassification: {
-          inWindow: measurement.probe.longTasks.map((task) => ({
-            ...task,
-            windowClassification: 'in-window',
-          })),
-          preWindow: measurement.probe.preWindowLongTasks.map((task) => ({
-            ...task,
-            windowClassification: 'pre-window',
-          })),
-          pointerdownPhase: measurement.longTasksByPhase.pointerdown,
-          commitPhase: measurement.longTasksByPhase.commit,
-        },
-        checks,
-        diagnostics: {
-          calibration: diagnosticsFor(
-            calibrationPageDiagnostics,
-            await readProbeDiagnostics(calibrationPage),
-          ),
-          measurement: diagnosticsFor(
-            measurementPageDiagnostics,
-            await readProbeDiagnostics(measurementPage),
-          ),
-        },
-        summaryProjection: {
-          summaryPath: 'docs/reports/evidence/verification-summary.json',
-          beforeDigest: digestJson(summaryBefore),
-          afterDigest: digestJson(summaryAfter),
-          unchanged: summaryUnchanged,
-        },
-        hypothesisUpdate: {
-          pointerdownLongTaskMs,
-          pointerdownOver100Ms,
-          updateCountDependence: pointerdownOver100Ms ? 'REFUTED' : 'UNRESOLVED',
-          initialOrLazySetupCost: pointerdownOver100Ms
-            ? 'STRONGLY_SUPPORTED'
-            : 'UNRESOLVED',
-          residualExplanation: pointerdownOver100Ms
-            ? null
-            : 'run-order-or-browser-noise-remains',
-          commitPhaseMs: measurement.phaseDurationsMs.commit,
-          causalConclusion: 'UNRESOLVED',
-        },
-        notes: [
-          'Calibration ran in the Playwright fixture context; the measured page uses a newly-created context and page.',
-          'The observer was installed before the first navigation in the measurement page, and no resize warm-up ran there.',
-          'The measured resize emitted exactly one observed pointermove over the same five-second window.',
-          'Handler/frame samples, phase spans, Long Task timestamps/durations/classification, canonical command, autosave, and transient geometry witnesses are retained.',
-          'No CDP trace is generated; this artifact is not projected into verification-summary.json.',
-        ],
+    await persistDiagnosticArtifact(testInfo, 'ac-007-resize-diagnostic-fresh-1-update', {
+      schemaVersion: 1,
+      criterion: 'AC-007',
+      diagnostic: 'C',
+      run: 'resize-diagnostic-fresh-1-update',
+      status:
+        checks.every((check) => check.passed) && measurement.status === 'PASS'
+          ? 'PASS'
+          : 'UNRESOLVED',
+      environment: await environment(measurementPage, browser),
+      fixture: { entityCount: fixture.entities.length, sha256: digestJson(fixture) },
+      viewport: VIEWPORT,
+      configuration: {
+        durationMs: LONG_WINDOW_MS,
+        updateCount: SINGLE_UPDATE_COUNT,
+        changedVariable: 'fresh browser context and run order',
+        explicitResizeWarmup: false,
+        observerInstalledBeforeNavigation: true,
+        calibrationContextSeparatedFromMeasurementContext: true,
       },
-    )
+      calibration,
+      measurement,
+      longTaskClassification: {
+        inWindow: measurement.probe.longTasks.map((task) => ({
+          ...task,
+          windowClassification: 'in-window',
+        })),
+        preWindow: measurement.probe.preWindowLongTasks.map((task) => ({
+          ...task,
+          windowClassification: 'pre-window',
+        })),
+        pointerdownPhase: measurement.longTasksByPhase.pointerdown,
+        commitPhase: measurement.longTasksByPhase.commit,
+      },
+      checks,
+      diagnostics: {
+        calibration: diagnosticsFor(
+          calibrationPageDiagnostics,
+          await readProbeDiagnostics(calibrationPage),
+        ),
+        measurement: diagnosticsFor(
+          measurementPageDiagnostics,
+          await readProbeDiagnostics(measurementPage),
+        ),
+      },
+      summaryProjection: {
+        summaryPath: 'docs/reports/evidence/verification-summary.json',
+        beforeDigest: digestJson(summaryBefore),
+        afterDigest: digestJson(summaryAfter),
+        unchanged: summaryUnchanged,
+      },
+      hypothesisUpdate: {
+        pointerdownLongTaskMs,
+        pointerdownOver100Ms,
+        updateCountDependence: pointerdownOver100Ms ? 'REFUTED' : 'UNRESOLVED',
+        initialOrLazySetupCost: pointerdownOver100Ms
+          ? 'STRONGLY_SUPPORTED'
+          : 'UNRESOLVED',
+        residualExplanation: pointerdownOver100Ms
+          ? null
+          : 'run-order-or-browser-noise-remains',
+        commitPhaseMs: measurement.phaseDurationsMs.commit,
+        causalConclusion: 'UNRESOLVED',
+      },
+      notes: [
+        'Calibration ran in the Playwright fixture context; the measured page uses a newly-created context and page.',
+        'The observer was installed before the first navigation in the measurement page, and no resize warm-up ran there.',
+        'The measured resize emitted exactly one observed pointermove over the same five-second window.',
+        'Handler/frame samples, phase spans, Long Task timestamps/durations/classification, canonical command, autosave, and transient geometry witnesses are retained.',
+        'No CDP trace is generated; this artifact is not projected into verification-summary.json.',
+      ],
+    })
   } finally {
     await measurementContext.close()
   }
@@ -1538,59 +1769,55 @@ test('AC-007 resize diagnostic D attributes fine grained first resize boundaries
         threshold: 'unchanged',
       },
     ]
-    await persistDiagnosticArtifact(
-      testInfo,
-      'ac-007-resize-diagnostic-fine-grained',
-      {
-        schemaVersion: 1,
-        criterion: 'AC-007',
-        diagnostic: 'D',
-        run: 'resize-diagnostic-fine-grained',
-        status:
-          checks.every((check) => check.passed) && measurement.status === 'PASS'
-            ? 'PASS'
-            : 'UNRESOLVED',
-        environment: await environment(measurementPage, browser),
-        fixture: { entityCount: fixture.entities.length, sha256: digestJson(fixture) },
-        viewport: VIEWPORT,
-        configuration: {
-          durationMs: LONG_WINDOW_MS,
-          updateCount: SINGLE_UPDATE_COUNT,
-          explicitResizeWarmup: false,
-          observerInstalledBeforeNavigation: true,
-          fineGrainedInstrumentation: 'evidence probe active window only; one resize',
-        },
-        calibration,
-        measurement,
-        fineGrainedTimeline: {
-          spans: fineGrainedSpans,
-          missingPhases,
-          commitHandlerToStableFramesMs,
-          longTaskAttributions: measurement.probe.longTaskAttributions,
-        },
-        checks,
-        diagnostics: diagnosticsFor(
-          pageDiagnostics,
-          await readProbeDiagnostics(measurementPage),
-        ),
-        summaryProjection: {
-          summaryPath: 'docs/reports/evidence/verification-summary.json',
-          beforeDigest: digestJson(summaryBefore),
-          afterDigest: digestJson(summaryAfter),
-          unchanged: summaryUnchanged,
-        },
-        conclusion: {
-          attribution: 'UNRESOLVED',
-          limitation:
-            'Phase overlap separates application boundaries but cannot identify React, R3F, browser event dispatch, JIT, or GC internals.',
-        },
-        notes: [
-          'The measured page is a fresh context/page with no resize warm-up and exactly one pointermove.',
-          'Fine-grained phases are emitted only while the evidence probe window is active; the pointermove hot path is unchanged.',
-          'No CDP trace is generated; canonical raw and verification-summary are not projected.',
-        ],
+    await persistDiagnosticArtifact(testInfo, 'ac-007-resize-diagnostic-fine-grained', {
+      schemaVersion: 1,
+      criterion: 'AC-007',
+      diagnostic: 'D',
+      run: 'resize-diagnostic-fine-grained',
+      status:
+        checks.every((check) => check.passed) && measurement.status === 'PASS'
+          ? 'PASS'
+          : 'UNRESOLVED',
+      environment: await environment(measurementPage, browser),
+      fixture: { entityCount: fixture.entities.length, sha256: digestJson(fixture) },
+      viewport: VIEWPORT,
+      configuration: {
+        durationMs: LONG_WINDOW_MS,
+        updateCount: SINGLE_UPDATE_COUNT,
+        explicitResizeWarmup: false,
+        observerInstalledBeforeNavigation: true,
+        fineGrainedInstrumentation: 'evidence probe active window only; one resize',
       },
-    )
+      calibration,
+      measurement,
+      fineGrainedTimeline: {
+        spans: fineGrainedSpans,
+        missingPhases,
+        commitHandlerToStableFramesMs,
+        longTaskAttributions: measurement.probe.longTaskAttributions,
+      },
+      checks,
+      diagnostics: diagnosticsFor(
+        pageDiagnostics,
+        await readProbeDiagnostics(measurementPage),
+      ),
+      summaryProjection: {
+        summaryPath: 'docs/reports/evidence/verification-summary.json',
+        beforeDigest: digestJson(summaryBefore),
+        afterDigest: digestJson(summaryAfter),
+        unchanged: summaryUnchanged,
+      },
+      conclusion: {
+        attribution: 'UNRESOLVED',
+        limitation:
+          'Phase overlap separates application boundaries but cannot identify React, R3F, browser event dispatch, JIT, or GC internals.',
+      },
+      notes: [
+        'The measured page is a fresh context/page with no resize warm-up and exactly one pointermove.',
+        'Fine-grained phases are emitted only while the evidence probe window is active; the pointermove hot path is unchanged.',
+        'No CDP trace is generated; canonical raw and verification-summary are not projected.',
+      ],
+    })
   } finally {
     await measurementContext.close()
   }
@@ -1692,7 +1919,7 @@ test('AC-007 transform has a five-second headed raw trace with 300+ updates', as
   await dragForWindow(page, handle, end, LONG_WINDOW_MS, LONG_UPDATE_COUNT, true)
   const stable = await settleInteractionWindow(page)
   const probe = await stopEvidenceWindow(page)
-  const cdpTrace = await cdpCapture.stop(probe.longTasks)
+  const cdpTrace = await cdpCapture.stop(probe.longTasks, probe.preWindowLongTasks)
   const interactionCounters = await readRendererEvidenceCounters(page)
   const assessment = longWindowAssessment(probe)
   const after = await exportedScene(page)
@@ -1781,6 +2008,11 @@ test('AC-007 transform has a five-second headed raw trace with 300+ updates', as
         traceSizeBytes: cdpTrace.traceSizeBytes,
         causalConclusion: cdpTrace.summary.causalConclusion,
         causalLimit: cdpTrace.summary.causalLimit,
+        attributionMethod: cdpTrace.summary.attributionMethod,
+        rendererMainThread: cdpTrace.summary.rendererMainThread,
+        gpuProcessIds: cdpTrace.summary.gpuProcessIds,
+        warmup: cdpTrace.summary.warmup,
+        longTaskAttribution: cdpTrace.summary.longTasks,
       },
       fixtureEntityCount: fixture.entities.length,
     },
@@ -1788,8 +2020,8 @@ test('AC-007 transform has a five-second headed raw trace with 300+ updates', as
     notes: [
       'Production build was served by Playwright webServer in headed Chromium.',
       'Handler samples are every wrapped pointer listener callback; raw arrays are retained.',
-      'Every raw Long Task is retained. Phase spans and CDP events establish temporal overlap only; they do not prove causal CPU attribution, and thresholds count all raw tasks.',
-      'H1, H2, and H3 remain unresolved where the CDP timeline cannot causally identify the remaining task duration.',
+      'Every raw Long Task is retained. CDP attribution reports renderer-main exclusive timeline intervals, GPU-process overlap, and pre-window warm-up separately; it does not claim product causality.',
+      'H1, H2, and H3 remain unresolved where the trace cannot causally identify the remaining task duration.',
       'The bridge counter is store notification count, not exact complete-scene publication count.',
     ],
   }
@@ -2020,6 +2252,7 @@ test('AC-007 paired transform compares zero-history and 50-history p95', async (
   page,
   browser,
 }, testInfo) => {
+  test.setTimeout(120_000)
   const pageDiagnostics = attachPageDiagnostics(page)
   await installEvidenceProbe(page)
   const fixture = createPerformanceScene(69)
@@ -2123,7 +2356,9 @@ test('AC-008 focused resize commit preserves the selected entity', async ({ page
   await page.getByTestId('catalog-add-desk.l-shaped-sit-stand').click()
   await expect(page.getByTestId('dimensions-width')).toBeVisible()
   await page.getByTestId('tool-resize').click()
-  const selectedId = await page.locator('.inspector-title .muted-copy').getAttribute('title')
+  const selectedId = await page
+    .locator('.inspector-title .muted-copy')
+    .getAttribute('title')
   if (!selectedId) throw new Error('The added desk did not expose a stable entity id.')
   const readSelectedId = () =>
     page.locator('.inspector-title .muted-copy').getAttribute('title')
@@ -2150,7 +2385,7 @@ test('AC-008 focused resize commit preserves the selected entity', async ({ page
   }
 })
 
-test('AC-008 five commits reach a stable canonical frame within 50ms median and 100ms max', async ({
+test('AC-008 five commits record criterion status without promoting runner acceptance', async ({
   page,
   browser,
 }, testInfo) => {
@@ -2161,7 +2396,9 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
   await page.getByTestId('catalog-add-desk.l-shaped-sit-stand').click()
   await expect(page.getByTestId('dimensions-width')).toBeVisible()
   await page.getByTestId('tool-resize').click()
-  const selectedId = await page.locator('.inspector-title .muted-copy').getAttribute('title')
+  const selectedId = await page
+    .locator('.inspector-title .muted-copy')
+    .getAttribute('title')
   if (!selectedId) throw new Error('The added desk did not expose a stable entity id.')
   const beforeCommitScene = await exportedScene(page)
   const canonicalScenes = [beforeCommitScene]
@@ -2256,31 +2493,53 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
   await page.keyboard.press('Escape')
   await waitForStableFrames(page)
   const cancelRestoration = await waitForRendererRestoration(page, cancelRendererBefore)
-  // Escape has already cancelled the controller and cleared pointer capture.
-  // Release Playwright's held mouse button before toolbar interactions; the
-  // post-release canonical/history/storage witnesses below prove no commit ran.
-  await page.mouse.up()
-  const cancelSceneAfter = await exportedScene(page)
-  const cancelGeometryAfter = await readResizeGeometryWitness(page, selectedId)
-  const cancelCountersAfter = await readRendererEvidenceCounters(page)
-  const cancelStorageAfter = await page.evaluate(() =>
+  const cancelSceneAfterEscape = await exportedSceneWithoutPointerInteraction(page)
+  const cancelGeometryAfterEscape = await readResizeGeometryWitness(page, selectedId)
+  const cancelCountersAfterEscape = await readRendererEvidenceCounters(page)
+  const cancelStorageAfterEscape = await page.evaluate(() =>
     localStorage.getItem('home-lab-scene'),
   )
-  const cancelSelectionAfter = await readCancelSelection()
+  const cancelSelectionAfterEscape = await readCancelSelection()
+  // Escape has already cancelled the controller and cleared pointer capture.
+  // Release the held button in an inert page corner, then keep a separate
+  // post-cleanup witness so a release-side pointer event cannot be mistaken
+  // for an Escape-cancel state transition.
+  await page.mouse.move(2, 2)
+  await page.mouse.up()
+  const cancelSceneAfterCleanup = await exportedScene(page)
+  const cancelGeometryAfterCleanup = await readResizeGeometryWitness(page, selectedId)
+  const cancelCountersAfter = await readRendererEvidenceCounters(page)
+  const cancelStorageAfterCleanup = await page.evaluate(() =>
+    localStorage.getItem('home-lab-scene'),
+  )
+  const cancelSelectionAfterCleanup = await readCancelSelection()
   const cancelSample: {
     readonly action: 'commit' | 'cancel'
     readonly sceneRestored: boolean
+    readonly sceneRestoredAfterEscape: boolean
+    readonly cleanupPreservedEscapeState: boolean
     readonly interactionUpdates: number
     readonly geometryChangedTransiently: boolean
     readonly geometryRestored: boolean
+    readonly geometryRestoredAfterEscape: boolean
     readonly historyRestored: boolean
+    readonly historyRestoredAfterEscape: boolean
     readonly storageRestored: boolean
+    readonly storageRestoredAfterEscape: boolean
     readonly selectionStable: boolean
+    readonly selectionCleanupStable: boolean
     readonly selectionWitness: {
       readonly expectedId: string
       readonly before: { readonly text: string | null; readonly title: string | null }
       readonly transient: { readonly text: string | null; readonly title: string | null }
-      readonly after: { readonly text: string | null; readonly title: string | null }
+      readonly afterEscape: {
+        readonly text: string | null
+        readonly title: string | null
+      }
+      readonly afterCleanup: {
+        readonly text: string | null
+        readonly title: string | null
+      }
     }
     readonly rendererRestored: boolean
     readonly restorationElapsedMs: number
@@ -2293,7 +2552,15 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
     readonly rendererAfter: RendererRuntimeSnapshot
   } = {
     action: 'cancel',
-    sceneRestored: cancelSceneAfter === cancelSceneBefore,
+    sceneRestored: cancelSceneAfterCleanup === cancelSceneBefore,
+    sceneRestoredAfterEscape: cancelSceneAfterEscape === cancelSceneBefore,
+    cleanupPreservedEscapeState:
+      cancelSceneAfterCleanup === cancelSceneAfterEscape &&
+      !objectTransformChanged(cancelGeometryAfterEscape, cancelGeometryAfterCleanup) &&
+      JSON.stringify(cancelCountersAfter.history) ===
+        JSON.stringify(cancelCountersAfterEscape.history) &&
+      cancelStorageAfterCleanup === cancelStorageAfterEscape &&
+      cancelSelectionAfterCleanup.title === cancelSelectionAfterEscape.title,
     interactionUpdates: Math.max(
       0,
       cancelCounters.interactionUpdates - cancelCountersBefore.interactionUpdates,
@@ -2302,38 +2569,47 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
       cancelGeometryBefore,
       cancelGeometryTransient,
     ),
-    geometryRestored: !objectTransformChanged(cancelGeometryBefore, cancelGeometryAfter),
+    geometryRestored: !objectTransformChanged(
+      cancelGeometryBefore,
+      cancelGeometryAfterCleanup,
+    ),
+    geometryRestoredAfterEscape: !objectTransformChanged(
+      cancelGeometryBefore,
+      cancelGeometryAfterEscape,
+    ),
     historyRestored:
       JSON.stringify(cancelCountersAfter.history) ===
       JSON.stringify(cancelCountersBefore.history),
-    storageRestored: cancelStorageAfter === cancelStorageBefore,
+    historyRestoredAfterEscape:
+      JSON.stringify(cancelCountersAfterEscape.history) ===
+      JSON.stringify(cancelCountersBefore.history),
+    storageRestored: cancelStorageAfterCleanup === cancelStorageBefore,
+    storageRestoredAfterEscape: cancelStorageAfterEscape === cancelStorageBefore,
     selectionStable:
       cancelSelectionBefore.title === selectedId &&
       cancelSelectionTransient.title === selectedId &&
-      cancelSelectionAfter.title === selectedId,
+      cancelSelectionAfterEscape.title === selectedId,
+    selectionCleanupStable: cancelSelectionAfterCleanup.title === selectedId,
     selectionWitness: {
       expectedId: selectedId,
       before: cancelSelectionBefore,
       transient: cancelSelectionTransient,
-      after: cancelSelectionAfter,
+      afterEscape: cancelSelectionAfterEscape,
+      afterCleanup: cancelSelectionAfterCleanup,
     },
     rendererRestored: cancelRestoration.restored,
     restorationElapsedMs: cancelRestoration.elapsedMs,
     sceneBefore: cancelSceneBefore,
-    sceneAfter: cancelSceneAfter,
+    sceneAfter: cancelSceneAfterCleanup,
     geometryBefore: cancelGeometryBefore,
     geometryTransient: cancelGeometryTransient,
-    geometryAfter: cancelGeometryAfter,
+    geometryAfter: cancelGeometryAfterCleanup,
     rendererBefore: cancelRendererBefore,
     rendererAfter: cancelRestoration.current,
   }
 
   const probe = await stopEvidenceWindow(page)
-  const autosaveWrites = storageWritesInWindow(
-    probe.storageWrites,
-    0,
-    probe.durationMs,
-  )
+  const autosaveWrites = storageWritesInWindow(probe.storageWrites, 0, probe.durationMs)
   const autosaveAssessment = assessAutosaveEvidence({
     successfulOperations: 5,
     directlyObservedSchedules: null,
@@ -2429,16 +2705,13 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
     },
     {
       name: 'edit-renderer-restored-after-cancel',
-      passed:
-        cancelSample.rendererRestored &&
-        cancelSample.restorationElapsedMs <= 250,
+      passed: cancelSample.rendererRestored && cancelSample.restorationElapsedMs <= 250,
       observed: cancelSample.restorationElapsedMs,
       threshold: 250,
     },
     {
       name: 'cancel-transient-geometry-witness',
-      passed:
-        cancelSample.geometryChangedTransiently && cancelSample.selectionStable,
+      passed: cancelSample.geometryChangedTransiently && cancelSample.selectionStable,
       observed: {
         geometryChangedTransiently: cancelSample.geometryChangedTransiently,
         interactionUpdates: cancelSample.interactionUpdates,
@@ -2450,17 +2723,23 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
       name: 'escape-cancel-preserves-canonical-state',
       passed:
         cancelSample.geometryChangedTransiently &&
-        cancelSample.sceneRestored &&
-        cancelSample.historyRestored &&
-        cancelSample.storageRestored &&
-        cancelSample.geometryRestored,
+        cancelSample.sceneRestoredAfterEscape &&
+        cancelSample.historyRestoredAfterEscape &&
+        cancelSample.storageRestoredAfterEscape &&
+        cancelSample.geometryRestoredAfterEscape,
       observed: {
-        sceneRestored: cancelSample.sceneRestored,
-        historyRestored: cancelSample.historyRestored,
-        storageRestored: cancelSample.storageRestored,
-        geometryRestored: cancelSample.geometryRestored,
+        sceneRestoredAfterEscape: cancelSample.sceneRestoredAfterEscape,
+        historyRestoredAfterEscape: cancelSample.historyRestoredAfterEscape,
+        storageRestoredAfterEscape: cancelSample.storageRestoredAfterEscape,
+        geometryRestoredAfterEscape: cancelSample.geometryRestoredAfterEscape,
       },
       threshold: 'all true after Escape',
+    },
+    {
+      name: 'mouseup-cleanup-preserves-escape-state',
+      passed: cancelSample.cleanupPreservedEscapeState,
+      observed: cancelSample.cleanupPreservedEscapeState ? 'unchanged' : 'changed',
+      threshold: 'unchanged after inert release',
     },
     {
       name: 'renderer-dpr-shadow-lighting-profile-observable',
@@ -2481,7 +2760,8 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
         physicalWrites: autosaveWrites.length,
         finalSavedMatchesCanonical,
       },
-      threshold: '1..5 coalesced physical writes and final saved current equals canonical',
+      threshold:
+        '1..5 coalesced physical writes and final saved current equals canonical',
     },
   ]
   const diagnostics = diagnosticsFor(pageDiagnostics, await readProbeDiagnostics(page))
@@ -2544,10 +2824,13 @@ test('AC-008 five commits reach a stable canonical frame within 50ms median and 
       'Physical localStorage writes may coalesce under the 250ms debounce; the final persisted current document is compared with the fifth canonical scene.',
       'No public seam directly counts autosave schedule calls, so that requirement remains UNRESOLVED rather than inferring five schedules from physical writes.',
       'Resize interactionUpdates count store update calls, not renderer-only transient geometry changes, and is recorded as diagnostic data only.',
+      'Runner acceptance means only that the artifact was generated and is PASS or UNRESOLVED; an UNRESOLVED artifact is never a criterion PASS.',
     ],
   }
   await persistEvidenceArtifact(testInfo, 'ac-008-five-commit-series', artifact)
-  expect(['PASS', 'UNRESOLVED']).toContain(artifact.status)
+  const runnerAcceptedArtifactStatus =
+    artifact.status === 'PASS' || artifact.status === 'UNRESOLVED'
+  expect(runnerAcceptedArtifactStatus).toBe(true)
 })
 
 test('AC-008 OrbitControls runs for five seconds without canonical writes', async ({
@@ -2705,7 +2988,7 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
   page,
   browser,
 }, testInfo) => {
-  test.setTimeout(120_000)
+  test.setTimeout(300_000)
   const pageDiagnostics = attachPageDiagnostics(page)
   await installEvidenceProbe(page)
   const fixture = createPerformanceScene(69)
@@ -2720,6 +3003,15 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
     )
   await topView.click()
   await waitForStableFrames(page)
+  const cameraSettlements: Array<{
+    readonly phase: string
+    readonly result: CameraSettledResult
+  }> = []
+  cameraSettlements.push({
+    phase: 'edit-top',
+    result: await waitForCameraSettled(page),
+  })
+  const editTopCamera = await readCameraOrbitSnapshot(page)
   const activationStart = await page.evaluate(() => performance.now())
   await previewButton(page).click()
   await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
@@ -2732,8 +3024,70 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
     2,
     10_000,
   )
-  const activationRuntime = await readRendererRuntime(page)
+  cameraSettlements.push({
+    phase: 'edit-to-preview',
+    result: await waitForCameraSettled(page),
+  })
+  const activationRuntime = await waitForRendererEvidence(page)
   const requiredRuntimeObservable = rendererRuntimeObservable(activationRuntime)
+  await resetRendererEvidenceCounters(page)
+  await startEvidenceWindow(page, 'ac-019-tier-matrix')
+  const tierMatrixCanonicalBefore = await exportedScene(page)
+  const tierMatrixStorageBefore = await page.evaluate(() =>
+    localStorage.getItem('home-lab-scene'),
+  )
+  const tierMatrixHistoryBefore = {
+    undo: await undoButton(page).isEnabled(),
+    redo: await redoButton(page).isEnabled(),
+  }
+  const tierMatrix: Array<{
+    readonly tier: PreviewQualityTier
+    readonly runtime: RendererRuntimeSnapshot
+    readonly rendererMatchesProfile: boolean
+    readonly camera: CameraOrbitSnapshot
+    readonly cameraSettlement: CameraSettledResult
+  }> = []
+  for (const tier of ['high', 'balanced', 'safe'] as const) {
+    const runtime = await forceEvidencePreviewTier(page, tier)
+    const cameraSettlement = await waitForCameraSettled(page)
+    const camera = await readCameraOrbitSnapshot(page)
+    cameraSettlements.push({ phase: `preview-${tier}`, result: cameraSettlement })
+    tierMatrix.push({
+      tier,
+      runtime,
+      rendererMatchesProfile: rendererTierMatches(runtime, tier),
+      camera,
+      cameraSettlement,
+    })
+  }
+  const tierMatrixCanonicalAfter = await exportedScene(page)
+  const tierMatrixStorageAfter = await page.evaluate(() =>
+    localStorage.getItem('home-lab-scene'),
+  )
+  const tierMatrixHistoryAfter = {
+    undo: await undoButton(page).isEnabled(),
+    redo: await redoButton(page).isEnabled(),
+  }
+  const tierMatrixCanonicalUnchanged =
+    tierMatrixCanonicalAfter === tierMatrixCanonicalBefore
+  const tierMatrixStorageUnchanged = tierMatrixStorageAfter === tierMatrixStorageBefore
+  const tierMatrixHistoryUnchanged =
+    JSON.stringify(tierMatrixHistoryAfter) === JSON.stringify(tierMatrixHistoryBefore)
+  const tierMatrixPassed =
+    tierMatrix.length === 3 &&
+    tierMatrix.every(({ rendererMatchesProfile }) => rendererMatchesProfile) &&
+    tierMatrixCanonicalUnchanged &&
+    tierMatrixStorageUnchanged &&
+    tierMatrixHistoryUnchanged
+  await forceEvidencePreviewTier(page, 'high')
+  cameraSettlements.push({
+    phase: 'safe-to-high',
+    result: await waitForCameraSettled(page),
+  })
+  const highReturnCamera = await readCameraOrbitSnapshot(page)
+  const tierMatrixProbe = await stopEvidenceWindow(page)
+  await waitForRendererEvidence(page)
+  await waitForStableFrames(page)
   const canvasBox = await page.locator('canvas').boundingBox()
   if (!canvasBox)
     throw new Error('The 100-entity preview canvas did not have a bounding box.')
@@ -2742,19 +3096,208 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
     y: canvasBox.y + canvasBox.height / 2,
   }
   await page.mouse.move(center.x, center.y)
+  const inertPoint = await findInertPointerPoint(page)
+  await startEvidenceWindow(page, 'ac-019-transport-baseline')
+  const transportBaseline = await inertPointerMoveTransportBaseline(
+    page,
+    inertPoint,
+    8,
+    PREVIEW_WINDOW_MS,
+    PREVIEW_UPDATE_COUNT,
+  )
+  const transportBaselineProbe = await stopEvidenceWindow(page)
+  // The inert baseline ends at the inert point. Re-enter the canvas before
+  // the evidence window so the pointerdown is an actual OrbitControls start.
+  await page.mouse.move(center.x, center.y)
   await resetRendererEvidenceCounters(page)
   await startEvidenceWindow(page, 'ac-019-preview-orbit-10s')
-  await orbitForWindow(page, center, 115, PREVIEW_WINDOW_MS, PREVIEW_UPDATE_COUNT, true)
+  const orbitMeasurement = await orbitForWindow(
+    page,
+    center,
+    115,
+    PREVIEW_WINDOW_MS,
+    PREVIEW_UPDATE_COUNT,
+    true,
+  )
   const probe = await stopEvidenceWindow(page)
+  cameraSettlements.push({
+    phase: 'orbit-mouseup',
+    result: await waitForCameraSettled(page),
+  })
+  const highAfterOrbitCamera = await readCameraOrbitSnapshot(page)
   const publicationCounters = await readRendererEvidenceCounters(page)
   const assessment = longWindowAssessment(probe, PREVIEW_WINDOW_MS)
-  const finalRuntime = await readRendererRuntime(page)
+  const durationAssessment = assessBoundedWindowDuration(
+    probe.durationMs,
+    PREVIEW_WINDOW_MS,
+    PREVIEW_WINDOW_MAX_MS,
+  )
+  let highBeforeEditCamera: CameraOrbitSnapshot | null = null
+  let editRestoredCamera: CameraOrbitSnapshot | null = null
+  let editBeforePreviewCamera: CameraOrbitSnapshot | null = null
+  const editModeButton = editButton(page)
+  if (await editModeButton.isVisible().catch(() => false)) {
+    cameraSettlements.push({
+      phase: 'before-edit-mode-switch',
+      result: await waitForCameraSettled(page),
+    })
+    highBeforeEditCamera = await readCameraOrbitSnapshot(page)
+    await editModeButton.click()
+    await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
+      'data-renderer-profile',
+      'editor',
+    )
+    await waitForStableFrames(page)
+    cameraSettlements.push({
+      phase: 'preview-to-edit',
+      result: await waitForCameraSettled(page),
+    })
+    editRestoredCamera = await readCameraOrbitSnapshot(page)
+    cameraSettlements.push({
+      phase: 'before-preview-mode-switch',
+      result: await waitForCameraSettled(page),
+    })
+    editBeforePreviewCamera = await readCameraOrbitSnapshot(page)
+    await previewButton(page).click()
+    await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
+      'data-renderer-profile',
+      'preview',
+    )
+    await waitForStableFrames(page)
+    cameraSettlements.push({
+      phase: 'edit-to-preview-final',
+      result: await waitForCameraSettled(page),
+    })
+  }
+  const finalRuntime = await waitForRendererEvidence(page)
+  if (!cameraSettlements.some(({ phase }) => phase === 'edit-to-preview-final')) {
+    cameraSettlements.push({
+      phase: 'final-preview',
+      result: await waitForCameraSettled(page),
+    })
+  }
+  const finalPreviewCamera = await readCameraOrbitSnapshot(page)
   const canonicalAfter = await exportedScene(page)
+  const cameraTransitionStorageAfter = await page.evaluate(() =>
+    localStorage.getItem('home-lab-scene'),
+  )
+  const cameraTransitionHistoryAfter = {
+    undo: await undoButton(page).isEnabled(),
+    redo: await redoButton(page).isEnabled(),
+  }
   const diagnostics = diagnosticsFor(pageDiagnostics, await readProbeDiagnostics(page))
   const finalQualityTier = finalRuntime.qualityTier
   const autosaveWrites = probe.storageWrites.filter(
     (write) => write.key === 'home-lab-scene',
   ).length
+  const highCamera = tierMatrix.find(({ tier }) => tier === 'high')?.camera ?? null
+  const balancedCamera =
+    tierMatrix.find(({ tier }) => tier === 'balanced')?.camera ?? null
+  const safeCamera = tierMatrix.find(({ tier }) => tier === 'safe')?.camera ?? null
+  const cameraSnapshots = {
+    editTop: editTopCamera,
+    previewHigh: highCamera,
+    balanced: balancedCamera,
+    safe: safeCamera,
+    highReturn: highReturnCamera,
+    highAfterOrbit: highAfterOrbitCamera,
+    beforeEditModeSwitch: highBeforeEditCamera,
+    editRestored: editRestoredCamera,
+    beforePreviewModeSwitch: editBeforePreviewCamera,
+    finalPreview: finalPreviewCamera,
+  }
+  const requiredCameraSnapshots = [
+    editTopCamera,
+    highCamera,
+    balancedCamera,
+    safeCamera,
+    highReturnCamera,
+    highAfterOrbitCamera,
+    highBeforeEditCamera,
+    editRestoredCamera,
+    editBeforePreviewCamera,
+    finalPreviewCamera,
+  ]
+  const cameraStateCaptured = requiredCameraSnapshots.every(
+    (snapshot) =>
+      snapshot !== null &&
+      snapshot.position !== null &&
+      snapshot.quaternion !== null &&
+      snapshot.zoom !== null &&
+      snapshot.target !== null,
+  )
+  const cameraBoundaryChecks = [
+    {
+      boundary: 'edit-top -> preview-high',
+      passed:
+        highCamera !== null &&
+        cameraOrbitSnapshotsApproximatelyEqual(editTopCamera, highCamera),
+    },
+    {
+      boundary: 'preview-high -> balanced',
+      passed:
+        highCamera !== null &&
+        balancedCamera !== null &&
+        cameraOrbitSnapshotsApproximatelyEqual(highCamera, balancedCamera),
+    },
+    {
+      boundary: 'balanced -> safe',
+      passed:
+        balancedCamera !== null &&
+        safeCamera !== null &&
+        cameraOrbitSnapshotsApproximatelyEqual(balancedCamera, safeCamera),
+    },
+    {
+      boundary: 'safe -> high',
+      passed:
+        safeCamera !== null &&
+        cameraOrbitSnapshotsApproximatelyEqual(safeCamera, highReturnCamera),
+    },
+    {
+      boundary: 'high -> edit -> high',
+      passed:
+        highBeforeEditCamera !== null &&
+        editRestoredCamera !== null &&
+        editBeforePreviewCamera !== null &&
+        cameraOrbitSnapshotsApproximatelyEqual(
+          highBeforeEditCamera,
+          editRestoredCamera,
+        ) &&
+        cameraOrbitSnapshotsApproximatelyEqual(
+          editBeforePreviewCamera,
+          finalPreviewCamera,
+        ),
+    },
+  ]
+  const orbitCameraChangedFromTopView =
+    highCamera !== null &&
+    highAfterOrbitCamera !== null &&
+    !cameraOrbitSnapshotsApproximatelyEqual(highCamera, highAfterOrbitCamera)
+  const orbitCameraRetainedAfterEditPreview =
+    highBeforeEditCamera !== null &&
+    editRestoredCamera !== null &&
+    editBeforePreviewCamera !== null &&
+    finalPreviewCamera !== null &&
+    cameraOrbitSnapshotsApproximatelyEqual(highBeforeEditCamera, editRestoredCamera) &&
+    cameraOrbitSnapshotsApproximatelyEqual(editBeforePreviewCamera, finalPreviewCamera)
+  const cameraTransitionCanonicalUnchanged = canonicalAfter === tierMatrixCanonicalBefore
+  const cameraTransitionStorageUnchanged =
+    cameraTransitionStorageAfter === tierMatrixStorageBefore
+  const cameraTransitionHistoryUnchanged =
+    JSON.stringify(cameraTransitionHistoryAfter) ===
+    JSON.stringify(tierMatrixHistoryBefore)
+  const cameraSettlingPassed = cameraSettlements.every(
+    ({ result }) => result.status === 'SETTLED',
+  )
+  const cameraBoundaryPass =
+    cameraStateCaptured &&
+    cameraSettlingPassed &&
+    orbitCameraChangedFromTopView &&
+    orbitCameraRetainedAfterEditPreview &&
+    cameraBoundaryChecks.every(({ passed }) => passed) &&
+    cameraTransitionCanonicalUnchanged &&
+    cameraTransitionStorageUnchanged &&
+    cameraTransitionHistoryUnchanged
   const fixedCameraWitnesses = [
     {
       camera: 'Top view',
@@ -2765,6 +3308,23 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
   ]
   const checks = [
     ...assessment.checks,
+    {
+      name: 'orbit-duration-within-explicit-upper-bound',
+      passed: durationAssessment.passed,
+      observed: durationAssessment.observedMs,
+      threshold: `${durationAssessment.minimumMs}..${durationAssessment.maximumMs}ms`,
+    },
+    {
+      name: 'inert-transport-baseline-captured',
+      passed:
+        transportBaseline.updateCount === PREVIEW_UPDATE_COUNT &&
+        transportBaselineProbe.eventCounts.pointermove !== undefined,
+      observed: {
+        requestedUpdates: transportBaseline.updateCount,
+        observedPointerMoves: transportBaselineProbe.eventCounts.pointermove ?? 0,
+      },
+      threshold: PREVIEW_UPDATE_COUNT,
+    },
     {
       name: '100-entity-fixture',
       passed: fixture.entities.length === 100,
@@ -2797,6 +3357,53 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
           ? 'available'
           : 'unavailable',
       threshold: 'available',
+    },
+    {
+      name: 'camera-state-survives-antialias-boundaries',
+      passed: cameraBoundaryPass,
+      observed: {
+        snapshots: cameraSnapshots,
+        boundaries: cameraBoundaryChecks,
+        transitionBoundaries: {
+          beforeEditModeSwitch: highBeforeEditCamera,
+          beforePreviewModeSwitch: editBeforePreviewCamera,
+        },
+        canonicalUnchanged: cameraTransitionCanonicalUnchanged,
+        storageUnchanged: cameraTransitionStorageUnchanged,
+        historyUnchanged: cameraTransitionHistoryUnchanged,
+      },
+      threshold: `position/quaternion/zoom/target within ${CAMERA_STATE_TOLERANCE}`,
+    },
+    {
+      name: 'camera-settled-before-each-snapshot',
+      passed: cameraSettlingPassed,
+      observed: cameraSettlements,
+      threshold: {
+        status: 'SETTLED',
+        tolerance: CAMERA_SETTLE_TOLERANCE,
+        consecutiveSamples: CAMERA_SETTLE_CONSECUTIVE_SAMPLES,
+        timeoutMs: CAMERA_SETTLE_TIMEOUT_MS,
+      },
+    },
+    {
+      name: 'orbit-camera-changed-from-top-view',
+      passed: orbitCameraChangedFromTopView,
+      observed: {
+        changed: orbitCameraChangedFromTopView,
+        topView: highCamera,
+        afterOrbit: highAfterOrbitCamera,
+      },
+      threshold: 'camera position/quaternion/target changed after canvas-centered orbit',
+    },
+    {
+      name: 'orbit-camera-retained-after-edit-preview-return',
+      passed: orbitCameraRetainedAfterEditPreview,
+      observed: {
+        editRestored: editRestoredCamera,
+        finalPreview: finalPreviewCamera,
+        afterOrbit: highAfterOrbitCamera,
+      },
+      threshold: 'after-orbit camera remains equal through edit -> preview return',
     },
     {
       name: 'orbit-terminated-with-one-pointer-up',
@@ -2834,15 +3441,29 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
     },
     {
       name: 'deterministic-high-balanced-safe-tier-matrix',
-      passed: false,
-      observed: 'automatic tier only; no frozen-UI tier selector',
-      threshold: 'deterministic High, Balanced, and Safe selection',
+      passed: tierMatrixPassed,
+      observed: {
+        tiers: tierMatrix.map(({ tier, runtime, rendererMatchesProfile }) => ({
+          tier,
+          qualityTier: runtime.qualityTier,
+          profile: runtime.profile,
+          actualAntialias: runtime.renderer?.antialias ?? null,
+          configuredAntialias: runtime.renderer?.configuredAntialias ?? null,
+          pixelRatio: runtime.renderer?.pixelRatio ?? null,
+          shadowMapType: runtime.renderer?.shadowMapType ?? null,
+          exposure: runtime.renderer?.toneMappingExposure ?? null,
+          rendererMatchesProfile,
+        })),
+        canonicalUnchanged: tierMatrixCanonicalUnchanged,
+        storageUnchanged: tierMatrixStorageUnchanged,
+        historyUnchanged: tierMatrixHistoryUnchanged,
+      },
+      threshold: 'High, Balanced, Safe actual/configured renderer state and zero writes',
     },
   ]
   const unresolvedChecks = new Set([
     'final-preview-quality-tier-observed',
     'renderer-runtime-captured',
-    'deterministic-high-balanced-safe-tier-matrix',
   ])
   const hardFailures = checks.filter(
     (check) => !check.passed && !unresolvedChecks.has(check.name),
@@ -2873,8 +3494,28 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
       activationToSecondStableFrameMs: activationStable.elapsedMs,
       activationStableFrameCount: activationStable.stableFrameCount,
       requestedDurationMs: PREVIEW_WINDOW_MS,
+      maximumAllowedDurationMs: PREVIEW_WINDOW_MAX_MS,
       actualElapsedMs: probe.durationMs,
       elapsedOverrunMs: probe.durationMs - PREVIEW_WINDOW_MS,
+      durationAssessment,
+      transportBaseline: {
+        point: inertPoint,
+        requestedDurationMs: PREVIEW_WINDOW_MS,
+        requestedUpdateCount: PREVIEW_UPDATE_COUNT,
+        elapsedMs: transportBaseline.elapsedMs,
+        observedProbeDurationMs: transportBaselineProbe.durationMs,
+        observedPointerMoves: transportBaselineProbe.eventCounts.pointermove ?? 0,
+        orbitElapsedMs: orbitMeasurement.elapsedMs,
+        orbitObservedProbeDurationMs: probe.durationMs,
+        elapsedDeltaMs: orbitMeasurement.elapsedMs - transportBaseline.elapsedMs,
+        samePageAndContext: true,
+        sameSchedule: true,
+      },
+      orbitPointerStart: {
+        point: center,
+        enteredAfterTransportBaseline: true,
+        pointerDownWasIssuedByOrbitHelper: true,
+      },
       fixedCameraWitnesses,
       finalQualityTier,
       localEnvironmentReadiness: {
@@ -2884,10 +3525,19 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
         profile: activationRuntime.profile,
         entityCount: fixture.entities.length,
       },
-      deterministicTierGap: [
-        'The current product exposes no user-selectable High/Balanced/Safe tier control.',
-        'Only the automatic tier and the fixed-camera Top witness are observable; separate deterministic Balanced and Safe witnesses remain unresolved.',
-      ],
+      deterministicTierMatrix: tierMatrix,
+      deterministicTierMatrixProbe: {
+        label: tierMatrixProbe.label,
+        durationMs: tierMatrixProbe.durationMs,
+        longTaskCount: tierMatrixProbe.longTasks.length,
+        frameIntervalCount: tierMatrixProbe.frameIntervals.length,
+        storageWrites: tierMatrixProbe.storageWrites,
+      },
+      deterministicTierMatrixInvariants: {
+        canonicalUnchanged: tierMatrixCanonicalUnchanged,
+        storageUnchanged: tierMatrixStorageUnchanged,
+        historyUnchanged: tierMatrixHistoryUnchanged,
+      },
       pointerMoves: probe.eventCounts.pointermove ?? 0,
       pointerUpCount: probe.eventCounts.pointerup ?? 0,
       pointerCancelCount: probe.eventCounts.pointercancel ?? 0,
@@ -2899,13 +3549,29 @@ test('AC-019 100-entity preview records activation readiness and a ten-second se
         after: canonicalAfter,
         unchanged: canonicalBefore === canonicalAfter,
       },
+      cameraSnapshots,
+      cameraBoundaryChecks,
+      cameraTransitionBoundaries: {
+        beforeEditModeSwitch: highBeforeEditCamera,
+        beforePreviewModeSwitch: editBeforePreviewCamera,
+      },
+      cameraSettlements,
+      cameraStateInvariants: {
+        canonicalUnchanged: cameraTransitionCanonicalUnchanged,
+        storageUnchanged: cameraTransitionStorageUnchanged,
+        historyUnchanged: cameraTransitionHistoryUnchanged,
+      },
     },
     renderer: { before: activationRuntime, final: finalRuntime },
     notes: [
       'The fixture contains exactly 100 entities: the deterministic 31-entity Future Workstation plus 69 performance tables.',
-      'Quality tier is classified from the live renderer shadow-map size (1536/1024/512) and retained in raw metadata.',
-      'High/Balanced/Safe fixed-camera selection is not exposed by the frozen UI; the exact gap is stored above.',
+      'The exact ?evidence=1-only bridge forces High/Balanced/Safe transiently for deterministic renderer observation without adding a user-facing control.',
+      'Each forced tier records actual/configured antialias, DPR range, PCF shadow type, shadow-map size, exposure, and canonical/history/storage invariance.',
+      `The tier matrix used a separate probe window (${tierMatrixProbe.durationMs}ms) and ended before the authoritative ${PREVIEW_WINDOW_MS}ms orbit probe began.`,
       `The requested orbit window was ${PREVIEW_WINDOW_MS}ms; the authoritative probe elapsed ${probe.durationMs}ms, an overrun of ${probe.durationMs - PREVIEW_WINDOW_MS}ms.`,
+      `The orbit duration must remain within ${PREVIEW_WINDOW_MS}..${PREVIEW_WINDOW_MAX_MS}ms; a longer run is FAIL, not a relaxed PASS.`,
+      'A previously observed approximately 95-second orbit remains a FAIL under the explicit 10..20-second duration bound.',
+      `The inert transport baseline used the same page/context, ${PREVIEW_UPDATE_COUNT} scheduled moves, and ${PREVIEW_WINDOW_MS}ms schedule; the elapsed delta is diagnostic only and does not assign causality to the app, Chromium, or Playwright.`,
       'PROVENANCE: This is the intentional AC-019 headed rerun requested after the accepted AC-007 stage.',
     ],
   }

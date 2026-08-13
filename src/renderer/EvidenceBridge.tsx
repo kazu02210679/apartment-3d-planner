@@ -3,17 +3,20 @@ import { useEffect, useRef } from 'react'
 import type { Camera, Scene, WebGLRenderer } from 'three'
 
 import type { EditorStore } from '../app/editor-store'
-import type { RendererProfile } from './quality'
+import type { OrbitTargetRef } from './camera-snapshot'
+import type { PreviewQualityTier, RendererProfile } from './quality'
 
 export interface RendererEvidenceSnapshot {
   readonly scene: Scene
   readonly camera: Camera
   readonly gl: WebGLRenderer
   readonly profile: RendererProfile
+  readonly orbitTarget: readonly [number, number, number] | null
 }
 
 export interface RendererEvidenceApi {
   getSnapshot(): RendererEvidenceSnapshot
+  forcePreviewTier(tier: PreviewQualityTier): void
   getCounters(): {
     readonly storeNotifications: number
     readonly canonicalCommands: number
@@ -65,9 +68,13 @@ function cleanupResizeFineGrainedEvidence(): void {
 export function RendererEvidenceBridge({
   profile,
   store,
+  onForcePreviewTier,
+  orbitTargetRef,
 }: {
   readonly profile: RendererProfile
   readonly store: EditorStore
+  readonly onForcePreviewTier: (tier: PreviewQualityTier) => void
+  readonly orbitTargetRef?: OrbitTargetRef
 }) {
   const { scene, camera, gl } = useThree()
   const profileRef = useRef(profile)
@@ -168,7 +175,21 @@ export function RendererEvidenceBridge({
       }
     } as typeof gl.render
     const bridge: RendererEvidenceApi = {
-      getSnapshot: () => ({ scene, camera, gl, profile: profileRef.current }),
+      getSnapshot: () => {
+        const target = orbitTargetRef?.current
+        return {
+          scene,
+          camera,
+          gl,
+          profile: profileRef.current,
+          orbitTarget: target ? ([target.x, target.y, target.z] as const) : null,
+        }
+      },
+      forcePreviewTier: (tier) => {
+        if (tier !== 'high' && tier !== 'balanced' && tier !== 'safe')
+          throw new Error(`Unsupported preview tier: ${String(tier)}`)
+        onForcePreviewTier(tier)
+      },
       getCounters: () => ({
         storeNotifications,
         canonicalCommands,
@@ -196,7 +217,7 @@ export function RendererEvidenceBridge({
       if (window.__apartmentRendererEvidence === bridge)
         delete window.__apartmentRendererEvidence
     }
-  }, [camera, gl, scene, store])
+  }, [camera, gl, onForcePreviewTier, orbitTargetRef, scene, store])
 
   return null
 }
