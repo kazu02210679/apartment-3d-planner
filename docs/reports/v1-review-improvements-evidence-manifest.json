@@ -3,17 +3,17 @@
   "manifestType": "v1-review-improvements-evidence-provenance",
   "repository": "apartment-3d-planner",
   "candidate": {
-    "sha": null,
-    "state": "Uncommitted review-fix candidate based on immutable working HEAD 183a1b1; product/harness changes and docs are uncommitted, remote CI not run",
-    "fullCandidateSha": "183a1b1196ed722e3dba222cf01aef857c55d5be"
+    "sha": "c34bd30db121c5c7c1cd0396149d4c9a0e610976",
+    "state": "Committed product/evidence candidate c34bd30; current working tree contains an uncommitted docs-only provenance follow-up; remote CI not run",
+    "fullCandidateSha": "c34bd30db121c5c7c1cd0396149d4c9a0e610976"
   },
   "provenance": {
     "executionDate": "2026-08-14",
     "timezone": "Asia/Tokyo",
-    "headSha": "183a1b1196ed722e3dba222cf01aef857c55d5be",
-    "workingTree": "uncommitted review-fix candidate; raw/trace evidence remains ignored",
-    "productEvidenceCommitSha": null,
-    "finalDocsCommitBoundary": "not applicable before review-fix candidate commit; if committed, bind product/evidence SHA and docs follow-up boundary without self-reference",
+    "headSha": "c34bd30db121c5c7c1cd0396149d4c9a0e610976",
+    "workingTree": "uncommitted docs-only provenance follow-up after committed product/evidence candidate c34bd30; raw/trace evidence remains ignored",
+    "productEvidenceCommitSha": "c34bd30db121c5c7c1cd0396149d4c9a0e610976",
+    "finalDocsCommitBoundary": "docs-only provenance follow-up commit will include this manifest; its SHA is intentionally not embedded to avoid manifest self-reference",
     "changedFiles": [
       "e2e/evidence.spec.ts",
       "src/app/editor-store.ts",
@@ -39,11 +39,11 @@
     "strictPairedTransformTestTimeoutMs": 120000,
     "strictPairedTransformTimeoutPolicy": "test-unit timeout matches measurement content; no retry",
     "retries": 0,
-    "strictEvidenceScope": "Full 14-test headed suite on the uncommitted review-fix candidate based on 183a1b1 (12 pass, 2 fail: AC-007 paired transform and AC-022 diagnostics), plus targeted callback/helper and AC-008 runs; retries=0.",
-    "strictFullSuiteProvenance": "The full suite ran against the current uncommitted product/harness candidate; no immutable candidate SHA exists yet and remote CI was not run. Immutable product HEAD remote verification remains run 31721281066 success."
+    "strictEvidenceScope": "Full 14-test headed suite on committed product/evidence candidate c34bd30 content (12 pass, 2 fail: AC-007 paired transform and AC-022 diagnostics), plus targeted callback/helper and AC-008 runs; retries=0.",
+    "strictFullSuiteProvenance": "The full suite ran against the exact product/harness content committed as c34bd30; the current follow-up is docs-only, remote CI was not run for c34bd30, and immutable product HEAD remote verification remains run 31721281066 success."
   },
   "reviewFixes": {
-    "provenance": "Current uncommitted candidate based on 183a1b1; findings were reviewed against repository analogues and official installed Three sources.",
+    "provenance": "Committed product/evidence candidate c34bd30; findings were reviewed against repository analogues and official installed Three sources.",
     "findings": [
       {
         "id": 1,
@@ -81,7 +81,7 @@
     "memoryBytes": 67737395200
   },
   "normalVerification": {
-    "status": "PASS_CURRENT_UNCOMMITTED_CANDIDATE",
+    "status": "PASS_COMMITTED_PRODUCT_EVIDENCE_CANDIDATE",
     "fullUnit": {
       "files": 37,
       "tests": 266,
@@ -96,7 +96,7 @@
       "build": "PASS"
     },
     "headedE2E": {
-      "status": "PASS_CURRENT_UNCOMMITTED_CANDIDATE",
+      "status": "PASS_COMMITTED_PRODUCT_EVIDENCE_CANDIDATE",
       "passed": 16,
       "total": 16,
       "retries": 0
@@ -109,7 +109,7 @@
       "passed": 12,
       "failed": 2,
       "retries": 0,
-      "status": "RUN_ON_CURRENT_UNCOMMITTED_CANDIDATE",
+      "status": "RUN_ON_COMMITTED_CANDIDATE_C34BD30_CONTENT",
       "failedTests": [
         "AC-007 paired transform compares zero-history and 50-history p95",
         "AC-022 classifies browser diagnostics and the delayed renderer chunk warning"
@@ -314,7 +314,7 @@
     "productHeadSha": "06ea4801d7ebdda99b7d8d412969d953c9371a84",
     "productHeadRunId": 31721281066,
     "productHeadStatus": "success",
-    "currentCandidateCi": "NOT_RUN_UNCOMMITTED_REVIEW_FIX_CANDIDATE_BASED_ON_183A1B1",
+    "currentCandidateCi": "NOT_RUN_COMMITTED_CANDIDATE_C34BD30_AND_DOCS_ONLY_FOLLOW_UP",
     "historicalPriorRun": {
       "headSha": "c53d5d51c6cd7bd219819cc4d2cd4ba58f73bee3",
       "runId": 31648056018,
