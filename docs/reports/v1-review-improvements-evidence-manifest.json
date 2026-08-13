@@ -3,15 +3,17 @@
   "manifestType": "v1-review-improvements-evidence-provenance",
   "repository": "apartment-3d-planner",
   "candidate": {
-    "sha": "06ea4801d7ebdda99b7d8d412969d953c9371a84",
-    "state": "HEAD plus uncommitted product callback fix/test, evidence-harness, and report candidate",
+    "sha": "4a668200d8ffb5c8caccab869fc0b28867f33d8f",
+    "state": "Committed product/evidence/report candidate 4a66820 plus final docs-only provenance follow-up commit; final docs SHA is not self-referenced",
     "fullCandidateSha": null
   },
   "provenance": {
     "executionDate": "2026-08-14",
     "timezone": "Asia/Tokyo",
-    "headSha": "06ea4801d7ebdda99b7d8d412969d953c9371a84",
-    "workingTree": "uncommitted candidate; full-tree SHA unavailable until commit",
+    "headSha": "4a668200d8ffb5c8caccab869fc0b28867f33d8f",
+    "workingTree": "clean after final docs-only provenance follow-up; final docs commit SHA is intentionally not embedded to avoid manifest self-reference",
+    "productEvidenceCommitSha": "4a668200d8ffb5c8caccab869fc0b28867f33d8f",
+    "finalDocsCommitBoundary": "docs-only follow-up commit will include this manifest; its SHA is not embedded here to avoid self-reference",
     "changedFiles": [
       "e2e/evidence.ts",
       "e2e/evidence.test.ts",
@@ -32,8 +34,8 @@
     "strictPairedTransformTestTimeoutMs": 120000,
     "strictPairedTransformTimeoutPolicy": "test-unit timeout matches measurement content; no retry",
     "retries": 0,
-    "strictEvidenceScope": "Full 14-test headed suite on the current uncommitted candidate (12 pass, 2 fail: AC-007 paired transform and AC-022 diagnostics), plus targeted callback/helper, AC-007 transform/paired, AC-008, and AC-019 runs; retries=0.",
-    "strictFullSuiteProvenance": "The final full suite ran after the uncommitted SceneCanvas callback fix and harness changes. Immutable product HEAD remote verification remains run 31721281066 success; current uncommitted candidate has no remote CI run."
+    "strictEvidenceScope": "Full 14-test headed suite on the product/evidence content committed as 4a66820 (12 pass, 2 fail: AC-007 paired transform and AC-022 diagnostics), plus targeted callback/helper, AC-007 transform/paired, AC-008, and AC-019 runs; retries=0.",
+    "strictFullSuiteProvenance": "The final full suite ran on the exact product/evidence content recorded in commit 4a66820 before that commit was created. The final follow-up commit is docs-only provenance binding; immutable product HEAD remote verification remains run 31721281066 success; commit 4a66820 and the docs-only follow-up have no remote CI run."
   },
   "environment": {
     "os": "Windows 11 Home",
@@ -72,7 +74,7 @@
       "passed": 12,
       "failed": 2,
       "retries": 0,
-      "status": "RUN_ON_HEAD_PLUS_UNCOMMITTED_PRODUCT_AND_HARNESS_CANDIDATE",
+      "status": "RUN_ON_COMMIT_CANDIDATE_4A66820_CONTENT",
       "failedTests": [
         "AC-007 paired transform compares zero-history and 50-history p95",
         "AC-022 classifies browser diagnostics and the delayed renderer chunk warning"
@@ -117,7 +119,7 @@
             "transportDeltaMs": 4,
             "longTasksOver50Ms": 0,
             "longTasksOver100Ms": 0,
-            "provenance": "HEAD_PLUS_UNCOMMITTED_HARNESS_TARGETED",
+            "provenance": "COMMIT_CANDIDATE_4A66820_CONTENT_TARGETED",
             "rawRetained": false
           },
           {
@@ -126,7 +128,7 @@
             "transportDeltaMs": 4,
             "longTasksOver50Ms": 0,
             "longTasksOver100Ms": 0,
-            "provenance": "HEAD_PLUS_UNCOMMITTED_HARNESS_TARGETED",
+            "provenance": "COMMIT_CANDIDATE_4A66820_CONTENT_TARGETED",
             "rawRetained": true
           }
         ],
@@ -276,7 +278,7 @@
     "productHeadSha": "06ea4801d7ebdda99b7d8d412969d953c9371a84",
     "productHeadRunId": 31721281066,
     "productHeadStatus": "success",
-    "currentCandidateCi": "NOT_RUN_UNCOMMITTED_PRODUCT_AND_HARNESS_DOCS",
+    "currentCandidateCi": "NOT_RUN_COMMIT_4A66820_AND_FINAL_DOCS_ONLY_FOLLOW_UP",
     "historicalPriorRun": {
       "headSha": "c53d5d51c6cd7bd219819cc4d2cd4ba58f73bee3",
       "runId": 31648056018,
