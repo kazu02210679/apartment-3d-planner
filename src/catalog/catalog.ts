@@ -1,5 +1,6 @@
 import type { Dimensions, Entity, JsonObject, JsonValue } from '../domain/schema'
 import { GENERIC_CATALOG_DEFINITIONS } from './definitions/generic'
+import { resolveDeskLayoutGeometry } from './dimensions'
 import type {
   CatalogDefinition,
   CatalogOverrideTarget,
@@ -304,6 +305,7 @@ function defaultPlacementProfile(): PlacementProfile {
 function resolvePlacementProfile(
   definition: CatalogDefinition,
   dimensions: Dimensions,
+  geometry?: GeometryDescriptor,
 ): PlacementProfile {
   const surface = (
     id: string,
@@ -331,10 +333,20 @@ function resolvePlacementProfile(
             contactPlane: 'bottom',
             allowedTargetClasses: ['floor'],
             preferredTargetClass: 'floor',
-            supportSurfaces: [
-              surface('main-top', { x: 0, y: dimensions.height / 2, z: -350 }, 1800, 700),
-              surface('return-top', { x: 200, y: dimensions.height / 2, z: 350 }, 1400, 600),
-            ],
+            supportSurfaces: (() => {
+              const layout = resolveDeskLayoutGeometry(dimensions, geometry)
+              const top = (id: string, part: typeof layout.main) =>
+                surface(
+                  id,
+                  { ...part.position, y: dimensions.height / 2 },
+                  part.size.width,
+                  part.size.depth,
+                )
+              return [
+                top('main-top', layout.main),
+                ...(layout.return ? [top('return-top', layout.return)] : []),
+              ]
+            })(),
           }
         : definition.id === 'desk.straight'
           ? {
@@ -342,7 +354,12 @@ function resolvePlacementProfile(
               allowedTargetClasses: ['floor'],
               preferredTargetClass: 'floor',
               supportSurfaces: [
-                surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
+                surface(
+                  'top',
+                  { x: 0, y: dimensions.height / 2, z: 0 },
+                  dimensions.width,
+                  dimensions.depth,
+                ),
               ],
             }
           : definition.id === 'desk.shelf'
@@ -351,7 +368,12 @@ function resolvePlacementProfile(
                 allowedTargetClasses: ['floor'],
                 preferredTargetClass: 'floor',
                 supportSurfaces: [
-                  surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
+                  surface(
+                    'top',
+                    { x: 0, y: dimensions.height / 2, z: 0 },
+                    dimensions.width,
+                    dimensions.depth,
+                  ),
                 ],
               }
             : definition.id === 'storage.shelf-cabinet'
@@ -361,7 +383,12 @@ function resolvePlacementProfile(
                   preferredTargetClass: 'floor',
                   supportSurfaces: [
                     surface('interior-shelf-low', { x: 0, y: 320, z: 0 }, 700, 320, 520),
-                    surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
+                    surface(
+                      'top',
+                      { x: 0, y: dimensions.height / 2, z: 0 },
+                      dimensions.width,
+                      dimensions.depth,
+                    ),
                   ],
                 }
               : definition.id === 'table.side'
@@ -370,7 +397,12 @@ function resolvePlacementProfile(
                     allowedTargetClasses: ['floor'],
                     preferredTargetClass: 'floor',
                     supportSurfaces: [
-                      surface('top', { x: 0, y: dimensions.height / 2, z: 0 }, dimensions.width, dimensions.depth),
+                      surface(
+                        'top',
+                        { x: 0, y: dimensions.height / 2, z: 0 },
+                        dimensions.width,
+                        dimensions.depth,
+                      ),
                     ],
                   }
                 : undefined
@@ -388,7 +420,9 @@ function resolvePlacementProfile(
         (!Number.isFinite(surface.usableClearanceHeight) ||
           surface.usableClearanceHeight <= 0))
     ) {
-      throw new Error(`Invalid placement support surface ${surface.id} for ${definition.id}.`)
+      throw new Error(
+        `Invalid placement support surface ${surface.id} for ${definition.id}.`,
+      )
     }
     return {
       ...surface,
@@ -481,24 +515,28 @@ export function resolveCatalogInstance(entity: Entity): ResolvedCatalogInstance 
     throw new Error(`Unknown material ${String(materialId)} for ${definition.id}`)
   }
 
+  const dimensions = resolveDimensions(
+    definition,
+    entity.catalog.presetId,
+    overrides.dimensions,
+  )
+  const geometry = resolveGeometry(
+    definition,
+    entity.catalog.presetId,
+    overrides.geometry,
+  )
+
   return {
     id: entity.id,
     catalog: entity.catalog,
-    dimensions: resolveDimensions(
-      definition,
-      entity.catalog.presetId,
-      overrides.dimensions,
-    ),
-    geometry: resolveGeometry(definition, entity.catalog.presetId, overrides.geometry),
+    dimensions,
+    geometry,
     materialId,
     properties: { ...entity.properties, ...overrides.properties },
     capabilities: definition.capabilities,
     inspectorFields: definition.inspectorFields,
     portDefinitions: definition.ports,
-    placement: resolvePlacementProfile(
-      definition,
-      resolveDimensions(definition, entity.catalog.presetId, overrides.dimensions),
-    ),
+    placement: resolvePlacementProfile(definition, dimensions, geometry),
   }
 }
 

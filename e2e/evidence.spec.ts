@@ -2598,6 +2598,8 @@ test('AC-008 five commits record criterion status without promoting runner accep
     readonly sceneChanged: boolean
     readonly rendererRestored: boolean
     readonly restorationElapsedMs: number
+    readonly geometryBefore: ResizeGeometryWitness
+    readonly geometryAfter: ResizeGeometryWitness
     readonly rendererBefore: RendererRuntimeSnapshot
     readonly rendererAfter: RendererRuntimeSnapshot
   }[] = []
@@ -2608,6 +2610,7 @@ test('AC-008 five commits record criterion status without promoting runner accep
     const screenDeltaX = index % 2 === 0 ? 2 : -2
     const sceneBefore = canonicalScenes.at(-1)!
     const rendererBefore = await readRendererRuntime(page)
+    const geometryBefore = await readResizeGeometryWitness(page, selectedId)
     const handle = await waitForPoint(
       () => projectedObjectPoint(page, 'resize-width-handle'),
       `commit-series resize handle ${index + 1}`,
@@ -2619,6 +2622,7 @@ test('AC-008 five commits record criterion status without promoting runner accep
     await page.mouse.up()
     const stable = await readPointerUpStableFrames(page)
     const restoration = await waitForRendererRestoration(page, rendererBefore)
+    const geometryAfter = await readResizeGeometryWitness(page, selectedId)
     const sceneAfter = await exportedScene(page)
     canonicalScenes.push(sceneAfter)
     commitSamples.push({
@@ -2630,6 +2634,8 @@ test('AC-008 five commits record criterion status without promoting runner accep
       sceneChanged: sceneAfter !== sceneBefore,
       rendererRestored: restoration.restored,
       restorationElapsedMs: restoration.elapsedMs,
+      geometryBefore,
+      geometryAfter,
       rendererBefore,
       rendererAfter: restoration.current,
     })
@@ -2896,6 +2902,16 @@ test('AC-008 five commits record criterion status without promoting runner accep
       ),
       observed: Math.max(...commitSamples.map((sample) => sample.restorationElapsedMs)),
       threshold: 250,
+    },
+    {
+      name: 'committed-renderer-root-scale-reset',
+      passed: commitSamples.every(
+        (sample) =>
+          sample.geometryAfter.scale?.every((value) => Math.abs(value - 1) <= 1e-6) ===
+          true,
+      ),
+      observed: commitSamples.map((sample) => sample.geometryAfter.scale),
+      threshold: '[1,1,1] after each committed resize',
     },
     {
       name: 'edit-renderer-restored-after-cancel',

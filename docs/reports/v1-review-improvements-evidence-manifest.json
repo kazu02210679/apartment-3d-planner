@@ -3,23 +3,28 @@
   "manifestType": "v1-review-improvements-evidence-provenance",
   "repository": "apartment-3d-planner",
   "candidate": {
-    "sha": "4a668200d8ffb5c8caccab869fc0b28867f33d8f",
-    "state": "Committed product/evidence/report candidate 4a66820 plus final docs-only provenance follow-up commit; final docs SHA is not self-referenced",
-    "fullCandidateSha": null
+    "sha": null,
+    "state": "Uncommitted review-fix candidate based on immutable working HEAD 183a1b1; product/harness changes and docs are uncommitted, remote CI not run",
+    "fullCandidateSha": "183a1b1196ed722e3dba222cf01aef857c55d5be"
   },
   "provenance": {
     "executionDate": "2026-08-14",
     "timezone": "Asia/Tokyo",
-    "headSha": "4a668200d8ffb5c8caccab869fc0b28867f33d8f",
-    "workingTree": "clean after final docs-only provenance follow-up; final docs commit SHA is intentionally not embedded to avoid manifest self-reference",
-    "productEvidenceCommitSha": "4a668200d8ffb5c8caccab869fc0b28867f33d8f",
-    "finalDocsCommitBoundary": "docs-only follow-up commit will include this manifest; its SHA is not embedded here to avoid self-reference",
+    "headSha": "183a1b1196ed722e3dba222cf01aef857c55d5be",
+    "workingTree": "uncommitted review-fix candidate; raw/trace evidence remains ignored",
+    "productEvidenceCommitSha": null,
+    "finalDocsCommitBoundary": "not applicable before review-fix candidate commit; if committed, bind product/evidence SHA and docs follow-up boundary without self-reference",
     "changedFiles": [
-      "e2e/evidence.ts",
-      "e2e/evidence.test.ts",
       "e2e/evidence.spec.ts",
-      "src/renderer/SceneCanvas.tsx",
-      "src/renderer/SceneCanvas.test.tsx",
+      "src/app/editor-store.ts",
+      "src/catalog/catalog.test.ts",
+      "src/catalog/catalog.ts",
+      "src/catalog/dimensions.ts",
+      "src/commands/math.ts",
+      "src/domain/placement.test.ts",
+      "src/renderer/controls/interaction-controller.test.ts",
+      "src/renderer/controls/interaction-controller.ts",
+      "src/renderer/entities/LDesk.tsx",
       "docs/reports/v1-review-improvements-status.md",
       "docs/reports/v1-review-improvements-evidence-manifest.json"
     ],
@@ -34,8 +39,38 @@
     "strictPairedTransformTestTimeoutMs": 120000,
     "strictPairedTransformTimeoutPolicy": "test-unit timeout matches measurement content; no retry",
     "retries": 0,
-    "strictEvidenceScope": "Full 14-test headed suite on the product/evidence content committed as 4a66820 (12 pass, 2 fail: AC-007 paired transform and AC-022 diagnostics), plus targeted callback/helper, AC-007 transform/paired, AC-008, and AC-019 runs; retries=0.",
-    "strictFullSuiteProvenance": "The final full suite ran on the exact product/evidence content recorded in commit 4a66820 before that commit was created. The final follow-up commit is docs-only provenance binding; immutable product HEAD remote verification remains run 31721281066 success; commit 4a66820 and the docs-only follow-up have no remote CI run."
+    "strictEvidenceScope": "Full 14-test headed suite on the uncommitted review-fix candidate based on 183a1b1 (12 pass, 2 fail: AC-007 paired transform and AC-022 diagnostics), plus targeted callback/helper and AC-008 runs; retries=0.",
+    "strictFullSuiteProvenance": "The full suite ran against the current uncommitted product/harness candidate; no immutable candidate SHA exists yet and remote CI was not run. Immutable product HEAD remote verification remains run 31721281066 success."
+  },
+  "reviewFixes": {
+    "provenance": "Current uncommitted candidate based on 183a1b1; findings were reviewed against repository analogues and official installed Three sources.",
+    "findings": [
+      {
+        "id": 1,
+        "status": "CONFIRMED_FIXED",
+        "summary": "move/rotate use transform-only interaction commits; resize retains geometry commit; preset monitor and fixed monitor-arm regression tests pass"
+      },
+      {
+        "id": 2,
+        "status": "CONFIRMED_FIXED",
+        "summary": "resize transient Object3D scale resets to captured initial scale before canonical publish; real Group/child and headed root-scale witness pass"
+      },
+      {
+        "id": 3,
+        "status": "CONFIRMED_FIXED",
+        "summary": "cancel restores actual THREE Euler through setters, keeping quaternion/matrix synchronized; characterization regression passes"
+      },
+      {
+        "id": 4,
+        "status": "CONFIRMED_FIXED",
+        "summary": "domain rotation math matches Three XYZ Matrix4; mixed/nested and near-gimbal threshold golden tests pass"
+      },
+      {
+        "id": 5,
+        "status": "CONFIRMED_FIXED",
+        "summary": "LDesk placement support surfaces derive from shared resolved renderer geometry; default/left/right/custom golden tests pass"
+      }
+    ]
   },
   "environment": {
     "os": "Windows 11 Home",
@@ -46,10 +81,10 @@
     "memoryBytes": 67737395200
   },
   "normalVerification": {
-    "status": "PASS_AFTER_HARNESS_CHANGE",
+    "status": "PASS_CURRENT_UNCOMMITTED_CANDIDATE",
     "fullUnit": {
       "files": 37,
-      "tests": 256,
+      "tests": 266,
       "status": "PASS"
     },
     "checks": {
@@ -61,7 +96,7 @@
       "build": "PASS"
     },
     "headedE2E": {
-      "status": "PASS_AFTER_HARNESS_CHANGE",
+      "status": "PASS_CURRENT_UNCOMMITTED_CANDIDATE",
       "passed": 16,
       "total": 16,
       "retries": 0
@@ -74,7 +109,7 @@
       "passed": 12,
       "failed": 2,
       "retries": 0,
-      "status": "RUN_ON_COMMIT_CANDIDATE_4A66820_CONTENT",
+      "status": "RUN_ON_CURRENT_UNCOMMITTED_CANDIDATE",
       "failedTests": [
         "AC-007 paired transform compares zero-history and 50-history p95",
         "AC-022 classifies browser diagnostics and the delayed renderer chunk warning"
@@ -86,22 +121,22 @@
         "passed": 1,
         "status": "PASS",
         "rawPath": "docs/reports/evidence/raw/ac-008-five-commit-series.json",
-        "rawSizeBytes": 1046698,
-        "rawSha256": "6144636842f6fee0b978c3781db4ea9f22f0b364af80d25ac6a64275973b5782",
+        "rawSizeBytes": 1026129,
+        "rawSha256": "41f9ad553c954e234fe2dfa5d04e4632568fa507e73fef68a9cf3ec5478f82c6",
         "directScheduleCount": 5,
         "directScheduleWitnessCount": 5,
-        "physicalWrites": 1,
+        "physicalWrites": 4,
         "finalSavedMatchesCanonical": true,
         "autosaveAssessment": "PASS",
-        "harnessFix": "Count bounded resize-autosave-schedule phase spans instead of passing null; retained witness spans in counters."
+        "harnessFix": "Count bounded resize-autosave-schedule phase spans instead of passing null; retained witness spans in counters. Current candidate additionally witnesses committed renderer root scale [1,1,1] after each resize."
       },
       "AC-019": {
         "tests": 1,
         "passed": 1,
         "status": "UNPROVEN_SINGLE_CURRENT_CANDIDATE_PASS",
         "retainedRawPath": "docs/reports/evidence/raw/ac-019-preview-100-entity.json",
-        "retainedRawSizeBytes": 3239724,
-        "retainedRawSha256": "83f8a0d07a9480c1de0a241646e1c7a3a3b2f55ff877b0bb9ae61d8aabceccb6",
+        "retainedRawSizeBytes": 3197768,
+        "retainedRawSha256": "42b8ff97189da2a246341b15cc855ce6a29ec33aba1600fb336803a03816390f",
         "repeatability": "UNPROVEN_SINGLE_CURRENT_CANDIDATE_PASS; prior measurements are historical mixed-provenance because dirty-state-specific immutable raw artifacts were not retained; earlier approximately 99.6-second same-harness failure remains historical variation",
         "historicalMeasurements": [
           {
@@ -119,7 +154,7 @@
             "transportDeltaMs": 4,
             "longTasksOver50Ms": 0,
             "longTasksOver100Ms": 0,
-            "provenance": "COMMIT_CANDIDATE_4A66820_CONTENT_TARGETED",
+            "provenance": "PRIOR_CANDIDATE_CONTENT_TARGETED",
             "rawRetained": false
           },
           {
@@ -128,8 +163,8 @@
             "transportDeltaMs": 4,
             "longTasksOver50Ms": 0,
             "longTasksOver100Ms": 0,
-            "provenance": "COMMIT_CANDIDATE_4A66820_CONTENT_TARGETED",
-            "rawRetained": true
+            "provenance": "PRIOR_CANDIDATE_CONTENT_TARGETED",
+            "rawRetained": false
           }
         ],
         "historicalMeasurementChecks": "PASS where recorded; not a current repeatability claim"
@@ -154,25 +189,25 @@
         "targetedAttributedTransformRaw": {
           "path": "docs/reports/evidence/raw/ac-007-transform-attributed-5s.json",
           "status": "PASS",
-          "frameP95Ms": 6.4,
+          "frameP95Ms": 12.6,
           "longTasksOver50Ms": 1,
           "longTasksOver100Ms": 0,
-          "rawSha256": "39625aa7b545237f18b4959ac96870bccc3c7591e476a8dc18ab6994c386e7d1"
+          "rawSha256": "59540f1785bb1f809e91146574e0ac187b10c9ae53d96b42eb4203b21492f21e"
         },
         "pairedHistoryRaw": {
           "path": "docs/reports/evidence/raw/ac-007-transform-paired-history.json",
           "status": "FAIL",
           "zeroHistoryWindowPass": false,
-          "fiftyHistoryWindowPass": false,
+          "fiftyHistoryWindowPass": true,
           "zeroHistoryLongTasksOver50Ms": 2,
-          "zeroHistoryLongTaskMaxMs": 69,
-          "zeroHistoryBoundarySummary": "before-active 56 ms; after-active pointerup 69 ms",
-          "fiftyHistoryLongTasksOver50Ms": 2,
-          "fiftyHistoryLongTaskMaxMs": 96,
-          "fiftyHistoryBoundarySummary": "before-active 96 ms; after-active pointerup 58 ms",
+          "zeroHistoryLongTaskMaxMs": 62,
+          "zeroHistoryBoundarySummary": "before-active 51 ms; after-active pointerup 62 ms",
+          "fiftyHistoryLongTasksOver50Ms": 1,
+          "fiftyHistoryLongTaskMaxMs": 68,
+          "fiftyHistoryBoundarySummary": "after-active pointerup 68 ms",
           "p95RegressionLimitPass": true,
           "exactlyOneCommandBothWindows": true,
-          "rawSha256": "89d51adaf3994822295198d0b7b1a0ac62a7352f502cd4631031154c62b795f2"
+          "rawSha256": "a41fc5f76dbd5db670eb55112609d3f69072f49d325aee1c8063e25810815ba8"
         },
         "resizeRaw": {
           "status": "PASS",
@@ -180,7 +215,7 @@
           "longTasksOver50Ms": 0,
           "longTasksOver100Ms": 0
         },
-        "diagnosticAttributedAndPaired": "Attribution targeted raw PASS locally, but paired/full strict acceptance FAILs on zero/50-history Long Task windows; CDP/page phase overlap is temporal-only and app causality remains UNRESOLVED",
+        "diagnosticAttributedAndPaired": "Attribution targeted raw PASS locally; current paired/full strict acceptance FAILs on the zero-history Long Task window (50-history window PASS); CDP/page phase overlap is temporal-only and app causality remains UNRESOLVED",
         "harnessFollowUp": {
           "cdpPreWindowLongTasksReferenceError": "RESOLVED",
           "pairedTransformTimeout": "RESOLVED",
@@ -190,13 +225,14 @@
       {
         "id": "AC-008",
         "status": "PASS",
-        "fiveCommitRawSha256": "6144636842f6fee0b978c3781db4ea9f22f0b364af80d25ac6a64275973b5782",
+        "fiveCommitRawSha256": "41f9ad553c954e234fe2dfa5d04e4632568fa507e73fef68a9cf3ec5478f82c6",
         "directScheduleWitness": {
           "count": 5,
           "phase": "resize-autosave-schedule",
           "retained": true
         },
-        "physicalWrites": 1,
+        "physicalWrites": 4,
+        "committedRendererRootScaleReset": "PASS for all five commits; each observed [1,1,1]",
         "finalSavedMatchesCanonical": true,
         "afterEscapeAndAfterCleanupSeparated": true,
         "inertReleaseBeforeExportWait": true,
@@ -210,9 +246,9 @@
         "historicalMeasurementClassification": "THREE_PASS_MEASUREMENTS_MIXED_PROVENANCE",
         "requestedDurationMs": 10000,
         "allowedDurationMs": { "minimum": 10000, "maximum": 20000 },
-        "latestActualElapsedMs": 11237.3,
-        "latestFrameP95Ms": 6.4,
-        "latestTransportDeltaMs": 1208,
+        "latestActualElapsedMs": 11425,
+        "latestFrameP95Ms": 12.5,
+        "latestTransportDeltaMs": 1404,
         "longTasksOver50Ms": 0,
         "longTasksOver100Ms": 0,
         "thresholdsRelaxed": false,
@@ -224,10 +260,10 @@
         },
         "latestRetainedRaw": {
           "path": "docs/reports/evidence/raw/ac-019-preview-100-entity.json",
-          "sizeBytes": 3239724,
-          "sha256": "83f8a0d07a9480c1de0a241646e1c7a3a3b2f55ff877b0bb9ae61d8aabceccb6",
-          "actualElapsedMs": 11237.3,
-          "frameP95Ms": 6.4,
+          "sizeBytes": 3197768,
+          "sha256": "42b8ff97189da2a246341b15cc855ce6a29ec33aba1600fb336803a03816390f",
+          "actualElapsedMs": 11425,
+          "frameP95Ms": 12.5,
           "longTasksOver50Ms": 0,
           "longTasksOver100Ms": 0,
           "provenance": "CURRENT_CANDIDATE_FULL_STRICT_RAW_OVERWRITE"
@@ -238,7 +274,7 @@
         "id": "AC-022",
         "status": "FAIL",
         "rawPath": "docs/reports/evidence/raw/ac-022-browser-diagnostics.json",
-        "rawSha256": "b0a1e313e2a15d466c1a8c2e3e16eca263409fc2b8a1272003dbc3b4fe9f3d5e",
+        "rawSha256": "1a18dbb6cdb7ff2f8caf2884cc4d6a0dc78d7461058d2f5e7e9d90ee699f962b",
         "warnings": { "THREE.Clock": 1 },
         "errors": 0,
         "pageErrors": 0,
@@ -278,7 +314,7 @@
     "productHeadSha": "06ea4801d7ebdda99b7d8d412969d953c9371a84",
     "productHeadRunId": 31721281066,
     "productHeadStatus": "success",
-    "currentCandidateCi": "NOT_RUN_COMMIT_4A66820_AND_FINAL_DOCS_ONLY_FOLLOW_UP",
+    "currentCandidateCi": "NOT_RUN_UNCOMMITTED_REVIEW_FIX_CANDIDATE_BASED_ON_183A1B1",
     "historicalPriorRun": {
       "headSha": "c53d5d51c6cd7bd219819cc4d2cd4ba58f73bee3",
       "runId": 31648056018,
@@ -289,15 +325,15 @@
   "sourceSummaryArtifact": {
     "path": "docs/reports/evidence/verification-summary.json",
     "status": "LOCAL_IGNORED",
-    "sizeBytes": 51050,
-    "sha256": "1aaf7f7fef17dc25112a31a8fdfc34e202ee701fc9e46414d9e71d564ea8fd7f"
+    "sizeBytes": 51501,
+    "sha256": "8e9c0f0d9a9408e7f69920614738afb09e10437d39f3786a2bfb7c50f7fba9de"
   },
   "sourceRawArtifacts": [
     {
       "path": "docs/reports/evidence/raw/ac-007-resize-5s.json",
       "status": "PASS",
-      "sizeBytes": 2072052,
-      "sha256": "c161d0c2a220973d9e10134286da3dbc767022a019265735400cc5ed8f57fb1c"
+      "sizeBytes": 2002588,
+      "sha256": "ea5b83b0e3ad6dabc0b35e9e21988149b91ea595f7b4a0eedbfb5c070461f950"
     },
     {
       "path": "docs/reports/evidence/raw/ac-007-transform-5s.json",
@@ -309,20 +345,20 @@
     {
       "path": "docs/reports/evidence/raw/ac-007-transform-attributed-5s.json",
       "status": "PASS",
-      "sizeBytes": 2170389,
-      "sha256": "39625aa7b545237f18b4959ac96870bccc3c7591e476a8dc18ab6994c386e7d1"
+      "sizeBytes": 2164324,
+      "sha256": "59540f1785bb1f809e91146574e0ac187b10c9ae53d96b42eb4203b21492f21e"
     },
     {
       "path": "docs/reports/evidence/raw/ac-007-transform-paired-history.json",
       "status": "FAIL",
-      "sizeBytes": 3996990,
-      "sha256": "89d51adaf3994822295198d0b7b1a0ac62a7352f502cd4631031154c62b795f2"
+      "sizeBytes": 3886028,
+      "sha256": "a41fc5f76dbd5db670eb55112609d3f69072f49d325aee1c8063e25810815ba8"
     },
     {
       "path": "docs/reports/evidence/raw/ac-008-five-commit-series.json",
       "status": "PASS",
-      "sizeBytes": 1046698,
-      "sha256": "6144636842f6fee0b978c3781db4ea9f22f0b364af80d25ac6a64275973b5782"
+      "sizeBytes": 1026129,
+      "sha256": "41f9ad553c954e234fe2dfa5d04e4632568fa507e73fef68a9cf3ec5478f82c6"
     },
     {
       "path": "docs/reports/evidence/raw/ac-008-five-commit-series-attempt-1.json",
@@ -333,20 +369,21 @@
     {
       "path": "docs/reports/evidence/raw/ac-008-orbit-5s.json",
       "status": "UNRESOLVED",
-      "sizeBytes": 1479918,
-      "sha256": "0fa80d6ee50eea0e8af8e7ff94a85c4fee1d320ec26ce56bc48063ce47920845"
+      "sizeBytes": 1448557,
+      "sha256": "e4490a1d6f1cd3edb29ba2343a00ea2b13e7bf238e71a4539855bfc031878a6e"
     },
     {
       "path": "docs/reports/evidence/raw/ac-019-preview-100-entity.json",
       "status": "PASS",
-      "sizeBytes": 3239724,
-      "sha256": "83f8a0d07a9480c1de0a241646e1c7a3a3b2f55ff877b0bb9ae61d8aabceccb6"
+      "provenance": "CURRENT_CANDIDATE_FULL_STRICT_RAW_OVERWRITE",
+      "sizeBytes": 3197768,
+      "sha256": "42b8ff97189da2a246341b15cc855ce6a29ec33aba1600fb336803a03816390f"
     },
     {
       "path": "docs/reports/evidence/raw/ac-022-browser-diagnostics.json",
       "status": "FAIL",
       "sizeBytes": 5502,
-      "sha256": "b0a1e313e2a15d466c1a8c2e3e16eca263409fc2b8a1272003dbc3b4fe9f3d5e"
+      "sha256": "1a18dbb6cdb7ff2f8caf2884cc4d6a0dc78d7461058d2f5e7e9d90ee699f962b"
     },
     {
       "path": "docs/reports/evidence/raw/ac-022-wsl-readonly.json",

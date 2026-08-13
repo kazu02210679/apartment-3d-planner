@@ -341,4 +341,49 @@ describe('generic catalog', () => {
     })
     expect(templateEntity('desk.l-shaped-sit-stand')).not.toHaveProperty('placement')
   })
+
+  it('derives L-desk support surfaces from the resolved rendered footprint', () => {
+    const defaultDesk = resolveCatalogInstance(templateEntity('desk.l-shaped-sit-stand'))
+    expect(defaultDesk.placement.supportSurfaces).toEqual([
+      {
+        id: 'main-top',
+        center: { x: 0, y: 360, z: -275 },
+        width: 1800,
+        depth: 700,
+      },
+      {
+        id: 'return-top',
+        center: { x: 200, y: 360, z: 325 },
+        width: 1400,
+        depth: 600,
+      },
+    ])
+
+    const customLeft = templateEntity('desk.l-shaped-sit-stand')
+    customLeft.overrides = {
+      dimensions: { width: 1500, depth: 1000, height: 800 },
+      geometry: {
+        lDesk: {
+          mainTop: { width: 1600, depth: 800 },
+          returnTop: { width: 900, depth: 500 },
+          returnSide: 'left',
+        },
+      },
+    }
+    const leftDesk = resolveCatalogInstance(customLeft)
+    expect(leftDesk.placement.supportSurfaces).toEqual([
+      {
+        id: 'main-top',
+        center: { x: 0, y: 400, z: -180 },
+        width: 1280,
+        depth: 640,
+      },
+      {
+        id: 'return-top',
+        center: { x: -280, y: 400, z: 300 },
+        width: 720,
+        depth: 400,
+      },
+    ])
+  })
 })

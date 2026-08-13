@@ -188,7 +188,7 @@ function validDimensions(dimensions: Dimensions): boolean {
 
 interface RendererDraftTarget {
   readonly position: { x: number; y: number; z: number }
-  readonly rotation: { x: number; y: number; z: number }
+  readonly rotation: { x: number; y: number; z: number; order?: string }
   readonly scale: { x: number; y: number; z: number }
 }
 
@@ -231,18 +231,38 @@ function captureRendererDraft(
     target,
     onCancel,
     initial: {
-      position: { ...target.position },
-      rotation: { ...target.rotation },
-      scale: { ...target.scale },
+      position: { x: target.position.x, y: target.position.y, z: target.position.z },
+      rotation: {
+        x: target.rotation.x,
+        y: target.rotation.y,
+        z: target.rotation.z,
+        ...(target.rotation.order === undefined ? {} : { order: target.rotation.order }),
+      },
+      scale: { x: target.scale.x, y: target.scale.y, z: target.scale.z },
     },
   }
 }
 
+function restoreRendererVector(
+  target: {
+    x: number
+    y: number
+    z: number
+    set?: (x: number, y: number, z: number, order?: string) => unknown
+  },
+  value: { x: number; y: number; z: number; order?: string },
+): void {
+  if (target.set) {
+    if (value.order !== undefined) target.set(value.x, value.y, value.z, value.order)
+    else target.set(value.x, value.y, value.z)
+  } else Object.assign(target, { x: value.x, y: value.y, z: value.z })
+}
+
 function restoreRendererDraft(draft: RendererDraftState | undefined): void {
   if (!draft) return
-  Object.assign(draft.target.position, draft.initial.position)
-  Object.assign(draft.target.rotation, draft.initial.rotation)
-  Object.assign(draft.target.scale, draft.initial.scale)
+  restoreRendererVector(draft.target.position, draft.initial.position)
+  restoreRendererVector(draft.target.rotation, draft.initial.rotation)
+  restoreRendererVector(draft.target.scale, draft.initial.scale)
   draft.onCancel()
 }
 
@@ -1085,11 +1105,19 @@ export function createEditorStore(options: EditorStoreOptions = {}): EditorStore
       }
     },
     updateInteractionTransform(entityId, transform) {
-      return interactionAction({
-        type: 'set-transform',
-        entityId,
-        transform: clone(transform),
-      })
+      try {
+        commandStore.updateInteraction({
+          type: 'set-transform',
+          entityId,
+          transform: clone(transform),
+        })
+        return true
+      } catch (error) {
+        publish(
+          error instanceof Error ? error.message : 'Unable to update the interaction.',
+        )
+        return false
+      }
     },
     updateInteractionDimensions(entityId, dimensions) {
       if (!validDimensions(dimensions)) return false

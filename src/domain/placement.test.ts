@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import { getCatalogDefinition, resolveCatalogDimensions } from '../catalog/catalog'
 import { applyCommand } from '../commands/commands'
-import { getWorldTransform } from '../commands/math'
+import { getWorldTransform, matrixToEuler, rotationMatrix } from '../commands/math'
 import type { Entity, SceneDocument } from './schema'
 import { createEmptyScene } from './scene'
 import { isPlacementEntityEligible, solvePlacement } from './placement'
+import { Matrix4, Euler } from 'three'
 
 function ids(): () => string {
   let index = 0
@@ -63,6 +64,88 @@ function catalogBox(
 }
 
 describe('placement solver', () => {
+  it('matches Three XYZ rotation matrices for mixed and nested transforms', () => {
+    const mixed = { x: 23, y: -37, z: 41 }
+    const actual = getWorldTransform('child', [
+      {
+        ...box('parent', { x: 100, y: 200, z: -300 }),
+        transform: {
+          position: { x: 100, y: 200, z: -300 },
+          rotation: { x: -11, y: 19, z: 7 },
+        },
+      },
+      {
+        ...box(
+          'child',
+          { x: 40, y: 50, z: 60 },
+          { width: 100, depth: 100, height: 100 },
+          'parent',
+        ),
+        transform: { position: { x: 40, y: 50, z: 60 }, rotation: mixed },
+      },
+    ])
+    const parentMatrix = new Matrix4().makeRotationFromEuler(
+      new Euler((-11 * Math.PI) / 180, (19 * Math.PI) / 180, (7 * Math.PI) / 180, 'XYZ'),
+    )
+    const childMatrix = new Matrix4().makeRotationFromEuler(
+      new Euler((23 * Math.PI) / 180, (-37 * Math.PI) / 180, (41 * Math.PI) / 180, 'XYZ'),
+    )
+    const expected = parentMatrix.clone().multiply(childMatrix)
+    const expectedRotation = [
+      expected.elements[0]!,
+      expected.elements[4]!,
+      expected.elements[8]!,
+      expected.elements[1]!,
+      expected.elements[5]!,
+      expected.elements[9]!,
+      expected.elements[2]!,
+      expected.elements[6]!,
+      expected.elements[10]!,
+    ]
+    actual.rotation.forEach((value, index) =>
+      expect(value).toBeCloseTo(expectedRotation[index], 9),
+    )
+  })
+
+  it('round-trips mixed XYZ scene rotations through the Three-compatible matrix', () => {
+    const rotation = { x: 23, y: -37, z: 41 }
+    const matrix = rotationMatrix(rotation)
+    const restored = matrixToEuler(matrix)
+    expect(restored.x).toBeCloseTo(rotation.x, 9)
+    expect(restored.y).toBeCloseTo(rotation.y, 9)
+    expect(restored.z).toBeCloseTo(rotation.z, 9)
+  })
+
+  it.each([
+    { x: 30, y: 89.99, z: 40 },
+    { x: 30, y: -89.99, z: 40 },
+  ])('matches Three XYZ near-gimbal extraction for $y degrees', (rotation) => {
+    const matrix = rotationMatrix(rotation)
+    const threeMatrix = new Matrix4().set(
+      matrix[0],
+      matrix[1],
+      matrix[2],
+      0,
+      matrix[3],
+      matrix[4],
+      matrix[5],
+      0,
+      matrix[6],
+      matrix[7],
+      matrix[8],
+      0,
+      0,
+      0,
+      0,
+      1,
+    )
+    const expected = new Euler().setFromRotationMatrix(threeMatrix, 'XYZ')
+    const actual = matrixToEuler(matrix)
+    expect(actual.x).toBeCloseTo((expected.x * 180) / Math.PI, 6)
+    expect(actual.y).toBeCloseTo((expected.y * 180) / Math.PI, 6)
+    expect(actual.z).toBeCloseTo((expected.z * 180) / Math.PI, 6)
+  })
+
   it('drops a floor-only item vertically while preserving world X/Z and rotation', () => {
     const input = scene()
     input.entities.push({

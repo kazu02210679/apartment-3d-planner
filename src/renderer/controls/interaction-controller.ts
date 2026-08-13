@@ -15,10 +15,12 @@ import {
 function startResizeEvidencePhase(phase: string): number | null {
   if (typeof window === 'undefined') return null
   return (
-    window as typeof window & {
-      __apartmentEvidenceProbe?: { startPhase: (name: string) => number | null }
-    }
-  ).__apartmentEvidenceProbe?.startPhase(phase) ?? null
+    (
+      window as typeof window & {
+        __apartmentEvidenceProbe?: { startPhase: (name: string) => number | null }
+      }
+    ).__apartmentEvidenceProbe?.startPhase(phase) ?? null
+  )
 }
 
 function endResizeEvidencePhase(token: number | null): void {
@@ -68,7 +70,12 @@ function stableNumber(value: number): number {
 }
 
 function setRendererVector(
-  target: { x: number; y: number; z: number; set?: (x: number, y: number, z: number) => unknown },
+  target: {
+    x: number
+    y: number
+    z: number
+    set?: (x: number, y: number, z: number) => unknown
+  },
   value: RendererVector3,
 ): void {
   if (target.set) target.set(...value)
@@ -129,7 +136,8 @@ export function createInteractionController(store: EditorStore): InteractionCont
       return active !== undefined
     },
     start(entityId, tool, target) {
-      const phase = tool === 'resize' ? startResizeEvidencePhase('resize-controller-start') : null
+      const phase =
+        tool === 'resize' ? startResizeEvidencePhase('resize-controller-start') : null
       try {
         const snapshot = store.getSnapshot()
         const entity = currentEntity(entityId)
@@ -239,21 +247,27 @@ export function createInteractionController(store: EditorStore): InteractionCont
     },
     commit() {
       const phase =
-        active?.tool === 'resize' ? startResizeEvidencePhase('resize-controller-commit') : null
+        active?.tool === 'resize'
+          ? startResizeEvidencePhase('resize-controller-commit')
+          : null
       try {
         if (!active) return false
         const gesture = active
-        if (
-          !store.updateInteractionGeometry(
-            gesture.entityId,
-            gesture.draftTransform,
-            gesture.draftDimensions,
-          )
-        ) {
+        const updated =
+          gesture.tool === 'resize'
+            ? store.updateInteractionGeometry(
+                gesture.entityId,
+                gesture.draftTransform,
+                gesture.draftDimensions,
+              )
+            : store.updateInteractionTransform(gesture.entityId, gesture.draftTransform)
+        if (!updated) {
           store.cancelInteraction()
           active = undefined
           return false
         }
+        if (gesture.tool === 'resize' && gesture.target)
+          setRendererVector(gesture.target.scale, gesture.targetScale)
         const committed = store.commitInteraction()
         active = undefined
         return committed
