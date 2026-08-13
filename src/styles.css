@@ -163,6 +163,39 @@ h3 {
   border-radius: 9px;
   background: #0e131e;
 }
+.app-header > .header-actions > .mode-switch {
+  display: none;
+}
+.quality-mode-switch,
+.preview-mode-switch {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0e131e;
+}
+.preview-mode-label {
+  padding: 0 8px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mode-button--primary {
+  background: var(--accent);
+  color: #172131;
+  font-weight: 750;
+}
+.app-header--preview .secondary-action,
+.app-header--preview .tool-switch,
+.app-header--preview .toolbar-select,
+.app-header--preview .toolbar-button:not(.toolbar-button--export),
+.app-header--preview input[type='file'] {
+  display: none;
+}
 .tool-switch {
   display: inline-flex;
   min-width: 0;
@@ -248,6 +281,16 @@ button:disabled {
   height: 0;
   overflow: hidden;
   grid-template-columns: minmax(240px, 260px) minmax(0, 1fr) minmax(320px, 360px);
+}
+.workspace-layout--preview {
+  grid-template-columns: minmax(0, 1fr);
+}
+.workspace-layout--preview > .panel {
+  display: none;
+}
+.app-header--preview ~ .mobile-controls,
+.app-header--preview ~ .mobile-sheet {
+  display: none;
 }
 .panel {
   min-width: 0;
@@ -539,6 +582,32 @@ input[type='number'] {
   color: var(--ink);
   cursor: pointer;
   font-size: 10px;
+}
+.placement-menu {
+  position: absolute;
+  z-index: 8;
+  display: grid;
+  min-width: 190px;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: rgba(19, 24, 36, 0.97);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+}
+.placement-menu button {
+  min-height: 32px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 10px;
+  text-align: left;
+}
+.placement-menu button:hover,
+.placement-menu button:focus-visible {
+  background: rgba(127, 196, 255, 0.12);
 }
 .renderer-fallback {
   display: grid;

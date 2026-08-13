@@ -18,16 +18,29 @@ export function PreviewEnvironment({ profile }: { readonly profile: RendererProf
         color={preview ? '#d9e9ff' : '#b9d1ff'}
         groundColor="#30445a"
       />
+      <ambientLight
+        intensity={preview ? 0.22 : 0.12}
+        color={preview ? '#fff4df' : '#d9e9ff'}
+      />
       <directionalLight
         castShadow
         intensity={preview ? 1.35 : 1.2}
         position={[4, 7, 4]}
         shadow-mapSize={[profile.shadowMapSize, profile.shadowMapSize]}
+        shadow-bias={-0.0002}
+        shadow-normalBias={0.02}
       />
       <directionalLight
         intensity={preview ? 0.65 : 0.4}
         position={[-4, 3, -2]}
         color="#7fc4ff"
+      />
+      <pointLight
+        intensity={preview ? 0.24 : 0.1}
+        distance={8}
+        decay={2}
+        position={[-1.8, 2.4, 1.2]}
+        color="#ffd8a8"
       />
     </>
   )

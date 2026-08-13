@@ -22,22 +22,22 @@ export function rotationMatrix(rotation: Vector3): Matrix3 {
   const x = degreesToRadians(rotation.x)
   const y = degreesToRadians(rotation.y)
   const z = degreesToRadians(rotation.z)
-  const sx = Math.sin(x)
-  const cx = Math.cos(x)
-  const sy = Math.sin(y)
-  const cy = Math.cos(y)
-  const sz = Math.sin(z)
-  const cz = Math.cos(z)
+  const a = Math.cos(x)
+  const b = Math.sin(x)
+  const c = Math.cos(y)
+  const d = Math.sin(y)
+  const e = Math.cos(z)
+  const f = Math.sin(z)
   return [
-    cy * cz,
-    cz * sx * sy - cx * sz,
-    sx * sz + cx * cz * sy,
-    cy * sz,
-    cx * cz + sx * sy * sz,
-    cx * sy * sz - cz * sx,
-    -sy,
-    cy * sx,
-    cx * cy,
+    c * e,
+    -c * f,
+    d,
+    a * f + b * e * d,
+    a * e - b * f * d,
+    -b * c,
+    b * f - a * e * d,
+    b * e + a * f * d,
+    a * c,
   ]
 }
 
@@ -86,13 +86,13 @@ function add(left: Vector3, right: Vector3): Vector3 {
 }
 
 export function matrixToEuler(matrix: Matrix3): Vector3 {
-  const y = Math.asin(Math.max(-1, Math.min(1, -matrix[6])))
-  const cy = Math.cos(y)
+  const y = Math.asin(Math.max(-1, Math.min(1, matrix[2])))
+  const standard = Math.abs(matrix[2]) < 0.9999999
   const x =
-    Math.abs(cy) > 1e-8
-      ? Math.atan2(matrix[7], matrix[8])
-      : Math.atan2(-matrix[5], matrix[4])
-  const z = Math.abs(cy) > 1e-8 ? Math.atan2(matrix[3], matrix[0]) : 0
+    standard
+      ? Math.atan2(-matrix[5], matrix[8])
+      : Math.atan2(matrix[7], matrix[4])
+  const z = standard ? Math.atan2(-matrix[1], matrix[0]) : 0
   return { x: radiansToDegrees(x), y: radiansToDegrees(y), z: radiansToDegrees(z) }
 }
 

@@ -1,9 +1,17 @@
 import { create } from '@react-three/test-renderer'
 import { describe, expect, it, vi } from 'vitest'
-import type { Object3D } from 'three'
+import {
+  BoxGeometry,
+  Mesh,
+  Raycaster,
+  Vector3,
+  type Intersection,
+  type Object3D,
+} from 'three'
 
 import type { InteractionController } from './interaction-controller'
 import { ResizeHandles } from './ResizeHandles'
+import { prioritizeResizeHandleIntersections } from './handle-raycast'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -25,6 +33,79 @@ const identityObject = {
 } as unknown as Object3D
 
 describe('ResizeHandles', () => {
+  it('prioritizes marked handle hits without mutating intersections or input', () => {
+    const nearEntity = new Mesh()
+    const handleObject = new Mesh()
+    handleObject.userData.resizeHandle = true
+    const farEntity = new Mesh()
+    const nearEntityHit = { distance: 2, object: nearEntity } as unknown as Intersection
+    const handleHit = { distance: 7, object: handleObject } as unknown as Intersection
+    const farEntityHit = { distance: 11, object: farEntity } as unknown as Intersection
+    const intersections = [nearEntityHit, handleHit, farEntityHit]
+    const originalIntersections = [...intersections]
+
+    const prioritized = prioritizeResizeHandleIntersections(intersections)
+
+    expect(prioritized).not.toBe(intersections)
+    expect(prioritized).toEqual([handleHit, nearEntityHit, farEntityHit])
+    expect(prioritized[0]).toBe(handleHit)
+    expect(prioritized.map(({ distance }) => distance)).toEqual([7, 2, 11])
+    expect(prioritized.map(({ object }) => object)).toEqual([
+      handleObject,
+      nearEntity,
+      farEntity,
+    ])
+    expect(intersections).toEqual(originalIntersections)
+    expect(intersections.map(({ distance }) => distance)).toEqual([2, 7, 11])
+    expect(handleObject.userData).toEqual({ resizeHandle: true })
+  })
+
+  it('preserves a handle miss without fabricating an intersection', () => {
+    const handle = new Mesh(new BoxGeometry(0.045, 0.045, 0.045))
+    handle.userData.resizeHandle = true
+    handle.position.set(1, 0, -3)
+    handle.updateMatrixWorld(true)
+
+    const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, -1))
+    const intersections = raycaster.intersectObject(handle)
+
+    const prioritized = prioritizeResizeHandleIntersections(intersections)
+
+    expect(prioritized).toHaveLength(0)
+    expect(intersections).toHaveLength(0)
+  })
+
+  it('prioritizes an actual handle hit over a nearer entity without changing distances', () => {
+    const background = new Mesh(new BoxGeometry(1, 1, 1))
+    background.name = 'background-entity'
+    background.position.z = -2
+    const handle = new Mesh(new BoxGeometry(0.045, 0.045, 0.045))
+    handle.name = 'resize-width-handle'
+    handle.userData.resizeHandle = true
+    handle.position.z = -3
+
+    background.updateMatrixWorld(true)
+    handle.updateMatrixWorld(true)
+
+    const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, -1))
+    const intersections = raycaster.intersectObjects([background, handle])
+    const originalIntersections = [...intersections]
+    const originalHandleHits = intersections.filter(({ object }) => object === handle)
+    const originalEntityHits = intersections.filter(({ object }) => object === background)
+    const prioritized = prioritizeResizeHandleIntersections(intersections)
+
+    expect(intersections[0]?.object).toBe(background)
+    expect(prioritized.slice(0, originalHandleHits.length)).toEqual(originalHandleHits)
+    expect(prioritized.slice(originalHandleHits.length)).toEqual(originalEntityHits)
+    expect(prioritized.map(({ distance }) => distance)).toEqual([
+      ...originalHandleHits.map(({ distance }) => distance),
+      ...originalEntityHits.map(({ distance }) => distance),
+    ])
+    expect(intersections).toEqual(originalIntersections)
+    expect(handle.position.toArray()).toEqual([0, 0, -3])
+    expect(intersections.some(({ object }) => object === background)).toBe(true)
+  })
+
   it('places each handle around the selected entity in its local dimensions', async () => {
     const controller: InteractionController = {
       active: false,
@@ -47,9 +128,10 @@ describe('ResizeHandles', () => {
         />,
       )
 
-      expect(
-        renderer.scene.findByProps({ name: 'resize-width-handle' }).props.position,
-      ).toEqual([0.5, 0, 0])
+      const widthHandle = renderer.scene.findByProps({ name: 'resize-width-handle' })
+      expect(widthHandle.props.position).toEqual([0.5, 0, 0])
+      expect(widthHandle.props.userData).toEqual({ resizeHandle: true })
+      expect(widthHandle.props.raycast).toBeUndefined()
       expect(
         renderer.scene.findByProps({ name: 'resize-height-handle' }).props.position,
       ).toEqual([0, 0.2, 0])
@@ -126,8 +208,394 @@ describe('ResizeHandles', () => {
       await handle.props.onPointerCancel(event(localPoint(0)))
       expect(controller.cancel).toHaveBeenCalledTimes(1)
       expect(target.releasePointerCapture).toHaveBeenCalledTimes(2)
+
+      active = true
+      await handle.props.onPointerDown(event(localPoint(0)))
+      window.dispatchEvent(new Event('blur'))
+      expect(controller.cancel).toHaveBeenCalledTimes(2)
+
+      active = true
+      await handle.props.onPointerDown(event(localPoint(0)))
+      await renderer.unmount()
+      expect(controller.cancel).toHaveBeenCalledTimes(3)
+      expect(target.releasePointerCapture).toHaveBeenCalledTimes(4)
     } finally {
       warn.mockRestore()
     }
+  })
+
+  it('notifies only when a resize starts successfully', async () => {
+    let active = false
+    const onResizeStart = vi.fn()
+    const controller: InteractionController = {
+      get active() {
+        return active
+      },
+      start: vi.fn(() => {
+        active = true
+        return true
+      }),
+      updateTransform: vi.fn(),
+      updateDimensions: vi.fn(),
+      resizeByLocalDelta: vi.fn(),
+      commit: vi.fn(() => {
+        active = false
+        return true
+      }),
+      cancel: vi.fn(() => {
+        active = false
+        return true
+      }),
+    }
+    const renderer = await create(
+      <ResizeHandles
+        entityId="selected"
+        entityObject={identityObject}
+        dimensions={{ width: 1000, depth: 600, height: 400 }}
+        enabled
+        controller={controller}
+        onResizeStart={onResizeStart}
+      />,
+    )
+    const handle = renderer.scene.findByProps({ name: 'resize-width-handle' })
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    }
+    const event = {
+      pointerId: 1,
+      target,
+      stopPropagation: vi.fn(),
+      unprojectedPoint: localPoint(0),
+    } as never
+
+    await handle.props.onPointerUp(event)
+    expect(onResizeStart).not.toHaveBeenCalled()
+
+    await handle.props.onPointerDown(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(1)
+    await handle.props.onPointerUp(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(1)
+
+    await handle.props.onPointerDown(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(2)
+    await handle.props.onPointerCancel(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(2)
+
+    await handle.props.onPointerDown(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(3)
+    await handle.props.onLostPointerCapture(event)
+    expect(onResizeStart).toHaveBeenCalledTimes(3)
+
+    await renderer.unmount()
+  })
+
+  it('emits app-handler phases without instrumenting pointermove', async () => {
+    let active = false
+    const phases: string[] = []
+    let token = 0
+    const evidenceWindow = window as typeof window & {
+      __apartmentEvidenceProbe?: {
+        startPhase: (phase: string) => number | null
+        endPhase: (value: number | null) => void
+      }
+    }
+    evidenceWindow.__apartmentEvidenceProbe = {
+      startPhase: (phase) => {
+        phases.push(`start:${phase}`)
+        return ++token
+      },
+      endPhase: (value) => phases.push(`end:${value}`),
+    }
+    const controller: InteractionController = {
+      get active() {
+        return active
+      },
+      start: () => {
+        active = true
+        return true
+      },
+      updateTransform: () => false,
+      updateDimensions: () => false,
+      resizeByLocalDelta: vi.fn(() => true),
+      commit: () => {
+        active = false
+        return true
+      },
+      cancel: () => false,
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const renderer = await create(
+        <ResizeHandles
+          entityId="selected"
+          entityObject={identityObject}
+          dimensions={{ width: 1000, depth: 600, height: 400 }}
+          enabled
+          controller={controller}
+        />,
+      )
+      const handle = renderer.scene.findByProps({ name: 'resize-width-handle' })
+      const target = {
+        setPointerCapture: vi.fn(),
+        releasePointerCapture: vi.fn(),
+      }
+      const event = {
+        pointerId: 1,
+        target,
+        stopPropagation: vi.fn(),
+        unprojectedPoint: localPoint(0),
+      } as never
+      await handle.props.onPointerDown(event)
+      await handle.props.onPointerMove({
+        pointerId: 1,
+        target,
+        stopPropagation: vi.fn(),
+        unprojectedPoint: localPoint(0.1),
+      })
+      await handle.props.onPointerUp(event)
+
+      expect(phases.filter((entry) => entry.startsWith('start:'))).toEqual([
+        'start:resize-pointerdown-app-handler',
+        'start:resize-pointerdown-handler-return-to-layout',
+        'start:resize-commit-app-handler',
+        'start:resize-commit-handler-return-to-layout',
+      ])
+      expect(phases.some((entry) => entry.includes('pointermove'))).toBe(false)
+      await renderer.unmount()
+    } finally {
+      warn.mockRestore()
+      delete evidenceWindow.__apartmentEvidenceProbe
+      delete window.__apartmentResizeFineGrainedEvidence
+    }
+  })
+
+  it('does not arm inactive evidence and closes pending tokens on cancel or overwrite', async () => {
+    let active = false
+    let token = 10
+    const ended: Array<number | null> = []
+    const evidenceWindow = window as typeof window & {
+      __apartmentEvidenceProbe?: {
+        startPhase: (phase: string) => number | null
+        endPhase: (value: number | null) => void
+      }
+    }
+    evidenceWindow.__apartmentEvidenceProbe = {
+      startPhase: () => null,
+      endPhase: (value) => ended.push(value),
+    }
+    const controller: InteractionController = {
+      get active() {
+        return active
+      },
+      start: () => {
+        active = true
+        return true
+      },
+      updateTransform: () => false,
+      updateDimensions: () => false,
+      resizeByLocalDelta: () => true,
+      commit: () => {
+        active = false
+        return true
+      },
+      cancel: () => {
+        active = false
+        return true
+      },
+    }
+    const renderer = await create(
+      <ResizeHandles
+        entityId="selected"
+        entityObject={identityObject}
+        dimensions={{ width: 1000, depth: 600, height: 400 }}
+        enabled
+        controller={controller}
+      />,
+    )
+    const handle = renderer.scene.findByProps({ name: 'resize-width-handle' })
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    }
+    const event = {
+      pointerId: 1,
+      target,
+      stopPropagation: vi.fn(),
+      unprojectedPoint: localPoint(0),
+    } as never
+    let mounted = true
+    try {
+      await handle.props.onPointerDown(event)
+      expect(window.__apartmentResizeFineGrainedEvidence).toBeUndefined()
+
+      evidenceWindow.__apartmentEvidenceProbe.startPhase = () => ++token
+      await handle.props.onPointerDown(event)
+      expect(window.__apartmentResizeFineGrainedEvidence?.handlerToLayoutToken).toBe(12)
+      await handle.props.onPointerCancel(event)
+      expect(ended).toContain(12)
+      expect(window.__apartmentResizeFineGrainedEvidence).toBeUndefined()
+
+      active = false
+      await handle.props.onPointerDown(event)
+      const previous = window.__apartmentResizeFineGrainedEvidence!.handlerToLayoutToken
+      active = false
+      await handle.props.onPointerDown(event)
+      expect(ended).toContain(previous)
+
+      const overwritten = window.__apartmentResizeFineGrainedEvidence!.handlerToLayoutToken
+      await handle.props.onLostPointerCapture(event)
+      expect(ended).toContain(overwritten)
+      expect(window.__apartmentResizeFineGrainedEvidence).toBeUndefined()
+
+      active = false
+      await handle.props.onPointerDown(event)
+      const escaped = window.__apartmentResizeFineGrainedEvidence!.handlerToLayoutToken
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      expect(ended).toContain(escaped)
+      expect(window.__apartmentResizeFineGrainedEvidence).toBeUndefined()
+
+      active = false
+      await handle.props.onPointerDown(event)
+      const unmounted = window.__apartmentResizeFineGrainedEvidence!.handlerToLayoutToken
+      await renderer.unmount()
+      mounted = false
+      expect(ended).toContain(unmounted)
+      expect(window.__apartmentResizeFineGrainedEvidence).toBeUndefined()
+    } finally {
+      if (mounted) await renderer.unmount()
+      delete evidenceWindow.__apartmentEvidenceProbe
+      delete window.__apartmentResizeFineGrainedEvidence
+    }
+  })
+
+  it('cancels an active resize on Escape and ignores other or inactive keydowns', async () => {
+    let active = false
+    const controller: InteractionController = {
+      get active() {
+        return active
+      },
+      start: vi.fn(() => {
+        active = true
+        return true
+      }),
+      updateTransform: vi.fn(),
+      updateDimensions: vi.fn(),
+      resizeByLocalDelta: vi.fn(),
+      commit: vi.fn(),
+      cancel: vi.fn(() => {
+        active = false
+        return true
+      }),
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const renderer = await create(
+      <ResizeHandles
+        entityId="selected"
+        entityObject={identityObject}
+        dimensions={{ width: 1000, depth: 600, height: 400 }}
+        enabled
+        controller={controller}
+      />,
+    )
+    const handle = renderer.scene.findByProps({ name: 'resize-width-handle' })
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    }
+    const event = (point: ReturnType<typeof localPoint>) =>
+      ({
+        pointerId: 1,
+        target,
+        stopPropagation: vi.fn(),
+        unprojectedPoint: point,
+      }) as never
+
+    try {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      expect(controller.cancel).not.toHaveBeenCalled()
+
+      await handle.props.onPointerDown(event(localPoint(0)))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+      expect(controller.cancel).not.toHaveBeenCalled()
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      expect(controller.cancel).toHaveBeenCalledTimes(1)
+      expect(target.releasePointerCapture).toHaveBeenCalledTimes(1)
+
+      active = true
+      await handle.props.onPointerMove(event(localPoint(0.1)))
+      expect(controller.resizeByLocalDelta).not.toHaveBeenCalled()
+
+      active = false
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      expect(controller.cancel).toHaveBeenCalledTimes(1)
+
+      await renderer.unmount()
+      expect(controller.cancel).toHaveBeenCalledTimes(1)
+      expect(target.releasePointerCapture).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('keeps the final resize delta invariant when the moving mesh shifts unprojectedPoint', async () => {
+    let active = false
+    const controller: InteractionController = {
+      get active() {
+        return active
+      },
+      start: vi.fn(() => {
+        active = true
+        return true
+      }),
+      updateTransform: vi.fn(),
+      updateDimensions: vi.fn(),
+      resizeByLocalDelta: vi.fn(),
+      commit: vi.fn(() => true),
+      cancel: vi.fn(() => true),
+    }
+    const renderer = await create(
+      <ResizeHandles
+        entityId="selected"
+        entityObject={identityObject}
+        dimensions={{ width: 1000, depth: 600, height: 400 }}
+        enabled
+        controller={controller}
+      />,
+    )
+    const handle = renderer.scene.findByProps({ name: 'resize-width-handle' })
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    }
+    const event = (rayX: number, unstableWorldX: number) =>
+      ({
+        pointerId: 1,
+        target,
+        stopPropagation: vi.fn(),
+        unprojectedPoint: localPoint(unstableWorldX),
+        ray: {
+          origin: { x: rayX, y: 0, z: 1 },
+          direction: { x: 0, y: 0, z: -1 },
+        },
+      }) as never
+
+    await handle.props.onPointerDown(event(0.5, 0.5))
+    await handle.props.onPointerMove(event(0.55, 4))
+    await handle.props.onPointerMove(event(0.6, 9))
+
+    expect(controller.resizeByLocalDelta).toHaveBeenNthCalledWith(
+      1,
+      0,
+      expect.any(Number),
+    )
+    expect(controller.resizeByLocalDelta).toHaveBeenNthCalledWith(
+      2,
+      0,
+      expect.any(Number),
+    )
+    expect(vi.mocked(controller.resizeByLocalDelta).mock.calls[0]![1]).toBeCloseTo(0.05)
+    expect(vi.mocked(controller.resizeByLocalDelta).mock.calls[1]![1]).toBeCloseTo(0.1)
   })
 })

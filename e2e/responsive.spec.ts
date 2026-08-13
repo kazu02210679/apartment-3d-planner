@@ -63,7 +63,7 @@ for (const viewport of [
     })
     expect(await downloadText(page)).toBe(exported)
 
-    await page.getByRole('button', { name: 'プレビュー' }).click()
+    await page.getByRole('button', { name: '高品質プレビュー', exact: true }).click()
     await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
       'data-renderer-profile',
       'preview',
@@ -72,7 +72,7 @@ for (const viewport of [
       body: await page.screenshot(),
       contentType: 'image/png',
     })
-    await page.getByRole('button', { name: '編集' }).click()
+    await page.getByRole('button', { name: '編集に戻る', exact: true }).click()
 
     if (mobile) {
       await page.getByRole('button', { name: 'カタログ' }).click()

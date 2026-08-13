@@ -88,7 +88,7 @@ test('cable routing remains editable, persistable, and preview-invariant in prod
 
   await page.getByTestId('tool-cable').click()
   await expect(page.locator('.cable-tool')).toBeVisible()
-  await page.locator('.mode-switch .mode-button').nth(1).click()
+  await page.getByRole('button', { name: '高品質プレビュー', exact: true }).click()
   await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
     'data-renderer-profile',
     'preview',
@@ -101,7 +101,7 @@ test('cable routing remains editable, persistable, and preview-invariant in prod
     contentType: 'image/png',
   })
 
-  await page.locator('.mode-switch .mode-button').first().click()
+  await page.getByRole('button', { name: '編集に戻る', exact: true }).click()
   await page.reload()
   await selectPowerCable(page)
   await expect(page.getByTestId('cable-end-end-a-x')).toHaveValue('321')

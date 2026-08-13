@@ -111,7 +111,7 @@ describe('TransformGizmo', () => {
     events.emit('dragging-changed', { value: true })
     events.emit('objectChange')
     events.emit('mouseUp')
-    expect(controller.start).toHaveBeenCalledWith('entity', 'move')
+    expect(controller.start).toHaveBeenCalledWith('entity', 'move', object)
     expect(controller.updateTransform).toHaveBeenCalledWith([1, 2, 3], [0.1, 0.2, 0.3])
     expect(controller.commit).toHaveBeenCalledTimes(1)
     expect(orbit).toHaveBeenCalledWith(false)
@@ -119,6 +119,44 @@ describe('TransformGizmo', () => {
 
     events.emit('mouseDown')
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(controller.cancel).toHaveBeenCalledTimes(1)
+
+    events.emit('mouseDown')
+    window.dispatchEvent(new Event('blur'))
+    expect(controller.cancel).toHaveBeenCalledTimes(2)
+
+    events.emit('mouseDown')
+    window.dispatchEvent(new Event('pointercancel'))
+    expect(controller.cancel).toHaveBeenCalledTimes(3)
+  })
+
+  it('cancels an active gesture when the gizmo unmounts', async () => {
+    events.reset()
+    const controller: InteractionController = {
+      active: true,
+      start: vi.fn(),
+      updateTransform: vi.fn(),
+      updateDimensions: vi.fn(),
+      resizeByLocalDelta: vi.fn(),
+      commit: vi.fn(),
+      cancel: vi.fn(() => true),
+    }
+    const renderer = await create(
+      <TransformGizmo
+        entityId="entity"
+        object={{
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+        } as unknown as Object3D}
+        tool="move"
+        enabled
+        controller={controller}
+        onOrbitEnabledChange={vi.fn()}
+      />,
+    )
+
+    await renderer.unmount()
+
     expect(controller.cancel).toHaveBeenCalledTimes(1)
   })
 })

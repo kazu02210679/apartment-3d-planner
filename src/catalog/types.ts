@@ -28,6 +28,24 @@ export type GeometryDescriptor =
       returnSide: 'left' | 'right'
     }>
 
+export type PlacementTargetClass = 'floor' | 'support-surface'
+
+export interface SupportSurfaceDefinition {
+  readonly id: string
+  /** Center of the usable rectangle in catalog-local coordinates. */
+  readonly center: Readonly<{ x: number; y: number; z: number }>
+  readonly width: number
+  readonly depth: number
+  readonly usableClearanceHeight?: number
+}
+
+export interface PlacementProfile {
+  readonly contactPlane: 'bottom'
+  readonly allowedTargetClasses: readonly PlacementTargetClass[]
+  readonly preferredTargetClass: PlacementTargetClass
+  readonly supportSurfaces: readonly SupportSurfaceDefinition[]
+}
+
 export interface CatalogGeometryOverrides {
   readonly panel?: Readonly<Partial<{ width: number; height: number }>>
   readonly lDesk?: Readonly<{
@@ -87,6 +105,7 @@ export interface CatalogDefinition {
   readonly capabilities: readonly string[]
   readonly inspectorFields: readonly InspectorField[]
   readonly ports: readonly CatalogPortDefinition[]
+  readonly placement?: PlacementProfile
   readonly productUrl?: string
   readonly extensions: JsonObject
 }
@@ -108,4 +127,5 @@ export interface ResolvedCatalogInstance {
   readonly capabilities: readonly string[]
   readonly inspectorFields: readonly InspectorField[]
   readonly portDefinitions: readonly CatalogPortDefinition[]
+  readonly placement: PlacementProfile
 }

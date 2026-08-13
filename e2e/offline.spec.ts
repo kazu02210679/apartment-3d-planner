@@ -48,12 +48,12 @@ test('uses only local resources through edit, autosave, export/import, preview, 
     buffer: Buffer.from(exported),
   })
   expect(await downloadText(page)).toBe(exported)
-  await page.getByRole('button', { name: 'プレビュー' }).click()
+  await page.getByRole('button', { name: '高品質プレビュー', exact: true }).click()
   await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
     'data-renderer-profile',
     'preview',
   )
-  await page.getByRole('button', { name: '編集' }).click()
+  await page.getByRole('button', { name: '編集に戻る', exact: true }).click()
   await page.reload()
   await expect(page.getByTestId('scene-canvas')).toBeVisible()
 

@@ -1,28 +1,7 @@
 import type { GeometryDescriptor } from '../../catalog/types'
+import { resolveDeskLayoutGeometry } from '../../catalog/dimensions'
 import { millimetresToRendererLength, type RendererVector3 } from '../adapters'
 import { BoxPart, BoundsOutline, CylinderPart, type ModelProps } from './ModelPrimitives'
-
-interface DeskTop {
-  readonly size: RendererVector3
-  readonly position: RendererVector3
-}
-
-function horizontalBounds(parts: readonly DeskTop[]) {
-  const x = parts.flatMap((part) => [
-    part.position[0] - part.size[0] / 2,
-    part.position[0] + part.size[0] / 2,
-  ])
-  const z = parts.flatMap((part) => [
-    part.position[2] - part.size[2] / 2,
-    part.position[2] + part.size[2] / 2,
-  ])
-  return {
-    minX: Math.min(...x),
-    maxX: Math.max(...x),
-    minZ: Math.min(...z),
-    maxZ: Math.max(...z),
-  }
-}
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function resolveDeskLayout(
@@ -30,56 +9,31 @@ export function resolveDeskLayout(
   geometry?: GeometryDescriptor,
 ) {
   const [width, height, depth] = dimensions
-  const top = Math.min(0.06, height * 0.12)
-  const topY = height / 2 - top / 2
-  if (geometry?.kind !== 'l-desk')
-    return {
-      origin: [0, 0, 0] as RendererVector3,
-      topY,
-      main: {
-        size: [width, top, depth] as RendererVector3,
-        position: [0, topY, 0] as RendererVector3,
-      },
-      footprint: [width, depth] as const,
-    }
-  const mainWidth = millimetresToRendererLength(geometry.mainTop.width)
-  const mainDepth = millimetresToRendererLength(geometry.mainTop.depth)
-  const returnWidth = millimetresToRendererLength(geometry.returnTop.width)
-  const returnDepth = millimetresToRendererLength(geometry.returnTop.depth)
-  const side = geometry.returnSide === 'left' ? -1 : 1
-  const overlap = Math.min(0.05, mainDepth / 4, returnDepth / 4)
-  const naturalMain: DeskTop = {
-    size: [mainWidth, top, mainDepth],
-    position: [0, topY, 0],
-  }
-  const naturalReturn: DeskTop = {
-    size: [returnWidth, top, returnDepth],
+  const layout = resolveDeskLayoutGeometry(
+    { width: width * 1000, height: height * 1000, depth: depth * 1000 },
+    geometry,
+  )
+  const rendererTop = (part: (typeof layout)['main']) => ({
+    size: [
+      millimetresToRendererLength(part.size.width),
+      millimetresToRendererLength(part.size.height),
+      millimetresToRendererLength(part.size.depth),
+    ] as RendererVector3,
     position: [
-      side * (mainWidth / 2 - returnWidth / 2),
-      topY,
-      mainDepth / 2 + returnDepth / 2 - overlap,
-    ],
-  }
-  const bounds = horizontalBounds([naturalMain, naturalReturn])
-  const naturalWidth = bounds.maxX - bounds.minX
-  const naturalDepth = bounds.maxZ - bounds.minZ
-  const scale = Math.min(1, width / naturalWidth, depth / naturalDepth)
-  const centerX = (bounds.minX + bounds.maxX) / 2
-  const centerZ = (bounds.minZ + bounds.maxZ) / 2
-  const fit = (part: DeskTop): DeskTop => ({
-    size: [part.size[0] * scale, part.size[1], part.size[2] * scale],
-    position: [
-      (part.position[0] - centerX) * scale,
-      part.position[1],
-      (part.position[2] - centerZ) * scale,
-    ],
+      millimetresToRendererLength(part.position.x),
+      millimetresToRendererLength(part.position.y),
+      millimetresToRendererLength(part.position.z),
+    ] as RendererVector3,
   })
   return {
     origin: [0, 0, 0] as RendererVector3,
-    topY,
-    main: fit(naturalMain),
-    return: fit(naturalReturn),
-    footprint: [naturalWidth * scale, naturalDepth * scale] as const,
+    topY: millimetresToRendererLength(layout.topY),
+    main: rendererTop(layout.main),
+    return: layout.return ? rendererTop(layout.return) : undefined,
+    footprint: [
+      millimetresToRendererLength(layout.footprint.width),
+      millimetresToRendererLength(layout.footprint.depth),
+    ] as const,
   }
 }
 

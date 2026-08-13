@@ -1,16 +1,191 @@
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import type { EventManager, RootState, RootStore } from '@react-three/fiber'
+import { Mesh, type Intersection } from 'three'
+
+const canvasTestState = vi.hoisted(() => ({
+  eventsProp: undefined as unknown,
+  createPointerEvents: vi.fn(),
+  baseEventFilter: vi.fn(),
+  lastEntityContextMenu: undefined as
+    ((id: string, event: MouseEvent) => void) | undefined,
+}))
 
 vi.mock('@react-three/fiber', () => ({
-  Canvas: ({ children }: { readonly children: React.ReactNode }) => <div>{children}</div>,
+  Canvas: ({
+    children,
+    events,
+    onPointerMissed,
+  }: {
+    readonly children: React.ReactNode
+    readonly events?: unknown
+    readonly onPointerMissed?: () => void
+  }) => {
+    canvasTestState.eventsProp = events
+    return (
+      <div data-testid="r3f-canvas" onClick={onPointerMissed}>
+        {children}
+      </div>
+    )
+  },
+  events: canvasTestState.createPointerEvents,
+  useThree: () => ({
+    scene: { name: 'scene-canvas-test-scene' },
+    camera: { name: 'scene-canvas-test-camera' },
+    gl: { name: 'scene-canvas-test-renderer' },
+  }),
 }))
-vi.mock('./SceneRoot', () => ({ SceneRoot: () => null }))
+vi.mock('./SceneRoot', () => ({
+  SceneRoot: ({
+    store,
+    onResizeStart,
+    onEntityContextMenu,
+  }: {
+    readonly store: { beginInteraction: (label: string) => boolean }
+    readonly onResizeStart?: () => void
+    readonly onEntityContextMenu?: (id: string, event: MouseEvent) => void
+  }) => {
+    canvasTestState.lastEntityContextMenu = onEntityContextMenu
+    return (
+      <div
+        data-testid="resize-handle"
+        onPointerDown={() => {
+          if (store.beginInteraction('resize entity')) onResizeStart?.()
+        }}
+      />
+    )
+  },
+}))
 
 import { createEditorStore } from '../app/editor-store'
 import { createEmptyScene } from '../domain/scene'
 import { SceneCanvas } from './SceneCanvas'
 
 describe('SceneCanvas', () => {
+  it('installs and executes the production resize-handle event factory at the Canvas seam', () => {
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami'),
+    })
+    const rootStore = {} as RootStore
+    const rootState = {} as RootState
+    const nearEntity = new Mesh()
+    const firstHandleObject = new Mesh()
+    firstHandleObject.userData.resizeHandle = true
+    const farEntity = new Mesh()
+    const secondHandleObject = new Mesh()
+    secondHandleObject.userData.resizeHandle = true
+    const nearEntityHit = { distance: 2, object: nearEntity } as unknown as Intersection
+    const firstHandleHit = {
+      distance: 7,
+      object: firstHandleObject,
+    } as unknown as Intersection
+    const farEntityHit = { distance: 11, object: farEntity } as unknown as Intersection
+    const secondHandleHit = {
+      distance: 17,
+      object: secondHandleObject,
+    } as unknown as Intersection
+    const intersections = [nearEntityHit, firstHandleHit, farEntityHit, secondHandleHit]
+    const originalIntersections = [...intersections]
+    const baseFilteredIntersections = [
+      farEntityHit,
+      secondHandleHit,
+      nearEntityHit,
+      firstHandleHit,
+    ]
+    let receivedByBaseFilter: Intersection[] | undefined
+    canvasTestState.eventsProp = undefined
+    canvasTestState.baseEventFilter.mockReset()
+    canvasTestState.createPointerEvents.mockReset()
+    canvasTestState.baseEventFilter.mockImplementation(
+      (items: Intersection[], state: RootState) => {
+        receivedByBaseFilter = items
+        expect(state).toBe(rootState)
+        return baseFilteredIntersections
+      },
+    )
+    canvasTestState.createPointerEvents.mockReturnValue({
+      enabled: true,
+      priority: 1,
+      filter: canvasTestState.baseEventFilter,
+    })
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+
+    expect(canvasTestState.eventsProp).toEqual(expect.any(Function))
+    const eventsFactory = canvasTestState.eventsProp as (
+      store: RootStore,
+    ) => EventManager<HTMLElement>
+    const eventManager = eventsFactory(rootStore)
+    const filteredIntersections = eventManager.filter!(intersections, rootState)
+
+    expect(canvasTestState.createPointerEvents).toHaveBeenCalledWith(rootStore)
+    expect(canvasTestState.baseEventFilter).toHaveBeenCalledTimes(1)
+    expect(receivedByBaseFilter).not.toBe(intersections)
+    expect(receivedByBaseFilter).toEqual(originalIntersections)
+    expect(filteredIntersections).toEqual([
+      secondHandleHit,
+      firstHandleHit,
+      farEntityHit,
+      nearEntityHit,
+    ])
+    expect(filteredIntersections.map(({ distance }) => distance)).toEqual([17, 7, 11, 2])
+    expect(filteredIntersections.map(({ object }) => object)).toEqual([
+      secondHandleObject,
+      firstHandleObject,
+      farEntity,
+      nearEntity,
+    ])
+    expect(intersections).toEqual(originalIntersections)
+    expect(intersections).not.toBe(filteredIntersections)
+  })
+
+  it('keeps renderer evidence dormant unless the exact query switch is enabled', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+
+    window.history.replaceState({}, '', '/')
+    const ordinary = render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    expect(window.__apartmentRendererEvidence).toBeUndefined()
+    ordinary.unmount()
+
+    window.history.replaceState({}, '', '/?evidence=1')
+    const evidence = render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    expect(window.__apartmentRendererEvidence).toBeDefined()
+    evidence.unmount()
+    expect(window.__apartmentRendererEvidence).toBeUndefined()
+    window.history.replaceState({}, '', '/')
+  })
+
+  it('does not expose renderer evidence for query lookalikes', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+
+    for (const path of [
+      '/?evidence=1&x=1',
+      '/?evidence=1&evidence=1',
+      '/?evidence=%31',
+      '/?EVIDENCE=1',
+    ]) {
+      window.history.replaceState({}, '', path)
+      const rendered = render(<SceneCanvas store={store} webglAvailable={() => true} />)
+
+      expect(window.__apartmentRendererEvidence).toBeUndefined()
+      rendered.unmount()
+    }
+
+    window.history.replaceState({}, '', '/')
+  })
+
   it('keeps exact numeric editing available when WebGL is unavailable', () => {
     let id = 0
     const store = createEditorStore({
@@ -58,5 +233,224 @@ describe('SceneCanvas', () => {
     render(<SceneCanvas store={store} webglAvailable={() => true} />)
 
     expect(screen.getByRole('button', { name: '選択対象を右へ移動' })).toBeDisabled()
+  })
+
+  it('limits the edit context menu to the three placement corrections', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    store.addCatalogItem('power.strip')
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    fireEvent.contextMenu(screen.getByTestId('scene-canvas'), {
+      clientX: 40,
+      clientY: 50,
+    })
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3)
+    expect(screen.getByRole('menuitem', { name: '範囲内に戻す' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: '最寄りの支持面に置く' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '床に置く' })).toBeInTheDocument()
+  })
+
+  it('keeps entity context-menu callbacks stable while reading the latest store guards', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+
+    canvasTestState.lastEntityContextMenu = undefined
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    const initialCallback = canvasTestState.lastEntityContextMenu as
+      ((id: string, event: MouseEvent) => void) | undefined
+    if (!initialCallback)
+      throw new Error('Expected SceneRoot to receive an entity callback.')
+
+    act(() => store.setActiveTool('resize'))
+    expect(canvasTestState.lastEntityContextMenu).toBe(initialCallback)
+
+    const visibleEditEvent = {
+      preventDefault: vi.fn(),
+      clientX: 40,
+      clientY: 50,
+    } as unknown as MouseEvent
+    act(() => initialCallback?.(entityId, visibleEditEvent))
+    expect(visibleEditEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3)
+    act(() => fireEvent.pointerDown(screen.getByTestId('scene-canvas')))
+
+    act(() => store.setMode('preview'))
+    const previewEvent = {
+      preventDefault: vi.fn(),
+      clientX: 40,
+      clientY: 50,
+    } as unknown as MouseEvent
+    act(() => initialCallback?.(entityId, previewEvent))
+    expect(previewEvent.preventDefault).not.toHaveBeenCalled()
+
+    act(() => {
+      store.setMode('edit')
+      store.setVisibility(entityId, false)
+    })
+    const hiddenEvent = {
+      preventDefault: vi.fn(),
+      clientX: 40,
+      clientY: 50,
+    } as unknown as MouseEvent
+    act(() => initialCallback?.(entityId, hiddenEvent))
+    expect(hiddenEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0)
+  })
+
+  it('only handles End when the edit canvas itself is focused', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+    const placeEntity = vi.spyOn(store, 'placeEntity')
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    const input = document.createElement('input')
+    document.body.append(input)
+    const canvas = screen.getByTestId('scene-canvas')
+
+    expect(canvas).toHaveAttribute('tabindex', '0')
+    expect(canvas).toHaveAttribute('aria-label', '3D editing canvas')
+
+    act(() => fireEvent.keyDown(input, { key: 'End' }))
+    expect(placeEntity).not.toHaveBeenCalled()
+
+    act(() => fireEvent.keyDown(document.body, { key: 'End' }))
+    expect(placeEntity).not.toHaveBeenCalled()
+
+    act(() => canvas.focus())
+    act(() => fireEvent.keyDown(canvas, { key: 'End' }))
+    expect(placeEntity).toHaveBeenCalledWith(entityId, 'nearest')
+
+    placeEntity.mockClear()
+    act(() => store.setMode('preview'))
+    expect(canvas).toHaveAttribute('tabindex', '-1')
+    act(() => fireEvent.keyDown(canvas, { key: 'End' }))
+    expect(placeEntity).not.toHaveBeenCalled()
+
+    input.remove()
+  })
+
+  it('disables every placement correction when no safe target exists', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('sleep.bed-futon')!
+    expect(store.setDimensions(entityId, { width: 2000, depth: 4000, height: 350 })).toBe(
+      true,
+    )
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    act(() =>
+      fireEvent.contextMenu(screen.getByTestId('scene-canvas'), {
+        clientX: 40,
+        clientY: 50,
+      }),
+    )
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3)
+    expect(
+      screen
+        .getAllByRole('menuitem')
+        .every((item) => (item as HTMLButtonElement).disabled),
+    ).toBe(true)
+  })
+
+  it('ignores resize-generated misses until the next real pointerdown', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+    store.selectEntity(entityId)
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    const handle = screen.getByTestId('resize-handle')
+    const canvas = screen.getByTestId('r3f-canvas')
+
+    act(() => {
+      fireEvent.pointerDown(handle)
+      fireEvent.pointerMove(handle)
+      fireEvent.pointerUp(handle)
+      fireEvent.click(canvas)
+    })
+
+    expect(store.getSnapshot().selectedEntityId).toBe(entityId)
+
+    act(() => {
+      fireEvent.pointerDown(canvas)
+      fireEvent.click(canvas)
+    })
+    expect(store.getSnapshot().selectedEntityId).toBeNull()
+  })
+
+  it('clears a stale suppression latch after a later pointerdown before a miss', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+    store.selectEntity(entityId)
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    const handle = screen.getByTestId('resize-handle')
+    const canvas = screen.getByTestId('r3f-canvas')
+
+    act(() => {
+      fireEvent.pointerDown(handle)
+      fireEvent.pointerUp(handle)
+      fireEvent.pointerDown(canvas)
+      fireEvent.click(canvas)
+    })
+
+    expect(store.getSnapshot().selectedEntityId).toBeNull()
+  })
+
+  it('clears selection for an ordinary miss without an interaction', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+    store.selectEntity(entityId)
+
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    const canvas = screen.getByTestId('r3f-canvas')
+    fireEvent.pointerDown(canvas)
+    fireEvent.click(canvas)
+
+    expect(store.getSnapshot().selectedEntityId).toBeNull()
   })
 })

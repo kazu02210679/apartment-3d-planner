@@ -306,4 +306,84 @@ describe('generic catalog', () => {
       )
     }
   })
+
+  it('resolves optional placement profiles without changing canonical entities', () => {
+    const monitor = resolveCatalogInstance(templateEntity('display.monitor'))
+    const desk = resolveCatalogInstance(templateEntity('desk.l-shaped-sit-stand'))
+    const cabinet = resolveCatalogInstance(templateEntity('storage.shelf-cabinet'))
+    const plain = resolveCatalogInstance(templateEntity('computer.mac'))
+
+    expect(monitor.placement).toMatchObject({
+      contactPlane: 'bottom',
+      allowedTargetClasses: ['floor', 'support-surface'],
+      preferredTargetClass: 'support-surface',
+    })
+    expect(desk.placement.supportSurfaces.map((surface) => surface.id)).toEqual([
+      'main-top',
+      'return-top',
+    ])
+    expect(desk.placement).toMatchObject({
+      allowedTargetClasses: ['floor'],
+      preferredTargetClass: 'floor',
+    })
+    expect(cabinet.placement.supportSurfaces[0]).toMatchObject({
+      id: 'interior-shelf-low',
+      usableClearanceHeight: expect.any(Number),
+    })
+    expect(cabinet.placement).toMatchObject({
+      allowedTargetClasses: ['floor'],
+      preferredTargetClass: 'floor',
+    })
+    expect(plain.placement).toMatchObject({
+      allowedTargetClasses: ['floor'],
+      preferredTargetClass: 'floor',
+      supportSurfaces: [],
+    })
+    expect(templateEntity('desk.l-shaped-sit-stand')).not.toHaveProperty('placement')
+  })
+
+  it('derives L-desk support surfaces from the resolved rendered footprint', () => {
+    const defaultDesk = resolveCatalogInstance(templateEntity('desk.l-shaped-sit-stand'))
+    expect(defaultDesk.placement.supportSurfaces).toEqual([
+      {
+        id: 'main-top',
+        center: { x: 0, y: 360, z: -275 },
+        width: 1800,
+        depth: 700,
+      },
+      {
+        id: 'return-top',
+        center: { x: 200, y: 360, z: 325 },
+        width: 1400,
+        depth: 600,
+      },
+    ])
+
+    const customLeft = templateEntity('desk.l-shaped-sit-stand')
+    customLeft.overrides = {
+      dimensions: { width: 1500, depth: 1000, height: 800 },
+      geometry: {
+        lDesk: {
+          mainTop: { width: 1600, depth: 800 },
+          returnTop: { width: 900, depth: 500 },
+          returnSide: 'left',
+        },
+      },
+    }
+    const leftDesk = resolveCatalogInstance(customLeft)
+    expect(leftDesk.placement.supportSurfaces).toEqual([
+      {
+        id: 'main-top',
+        center: { x: 0, y: 400, z: -180 },
+        width: 1280,
+        depth: 640,
+      },
+      {
+        id: 'return-top',
+        center: { x: -280, y: 400, z: 300 },
+        width: 720,
+        depth: 400,
+      },
+    ])
+  })
 })

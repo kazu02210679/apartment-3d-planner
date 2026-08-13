@@ -31,6 +31,12 @@ export class CommandStore {
   get activeInteraction(): boolean {
     return this.interaction !== undefined
   }
+  get canUndo(): boolean {
+    return this.sceneHistory.canUndo
+  }
+  get canRedo(): boolean {
+    return this.sceneHistory.canRedo
+  }
   snapshot() {
     return { scene: this.scene, history: this.history }
   }

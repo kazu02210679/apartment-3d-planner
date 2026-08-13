@@ -38,7 +38,7 @@ export function TransformGizmo({
         listener: (event: { readonly value?: boolean }) => void,
       ): void
     }
-    const begin = () => controller.start(entityId, tool)
+    const begin = () => controller.start(entityId, tool, object)
     const update = () => {
       if (!controller.active) return
       controller.updateTransform(
@@ -66,6 +66,21 @@ export function TransformGizmo({
 
   useEffect(() => {
     if (!enabled) return
+    const cancel = () => {
+      if (!controller.active) return
+      controller.cancel()
+      onOrbitEnabledChange(true)
+    }
+    window.addEventListener('blur', cancel)
+    window.addEventListener('pointercancel', cancel)
+    return () => {
+      window.removeEventListener('blur', cancel)
+      window.removeEventListener('pointercancel', cancel)
+    }
+  }, [controller, enabled, onOrbitEnabledChange])
+
+  useEffect(() => {
+    if (!enabled) return
     const cancel = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !controller.active) return
       controller.cancel()
@@ -74,6 +89,15 @@ export function TransformGizmo({
     window.addEventListener('keydown', cancel)
     return () => window.removeEventListener('keydown', cancel)
   }, [controller, enabled, onOrbitEnabledChange])
+
+  useEffect(
+    () => () => {
+      if (!controller.active) return
+      controller.cancel()
+      onOrbitEnabledChange(true)
+    },
+    [controller, onOrbitEnabledChange],
+  )
 
   useEffect(() => {
     if (!enabled && controller.active) controller.cancel()

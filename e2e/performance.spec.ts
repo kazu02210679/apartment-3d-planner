@@ -21,9 +21,29 @@ async function downloadText(page: Page): Promise<string> {
   return text
 }
 
+async function loadPerformanceScene(page: Page) {
+  const fixture = createPerformanceScene(100)
+  expect(fixture.entities.length).toBe(131)
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'performance.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(fixture)),
+  })
+  await page.locator('.tab-list button').nth(1).click()
+  const target = page
+    .locator('.outliner-row')
+    .filter({ hasText: 'Performance table 001' })
+  await expect(target).toBeVisible()
+  const targetId = (await target.getAttribute('data-testid'))!.replace(
+    'outliner-entity-',
+    '',
+  )
+  return { fixture, target, targetId }
+}
+
 test.use({ viewport: { width: 1440, height: 900 } })
 
-test('100-object production selection and numeric edit median is below 250ms with a lazy renderer chunk', async ({
+test('131-entity production selection and numeric edit median is below 250ms with a lazy renderer chunk', async ({
   page,
 }, testInfo) => {
   const manifest = JSON.parse(
@@ -61,24 +81,9 @@ test('100-object production selection and numeric edit median is below 250ms wit
   await expect(page.getByTestId('scene-canvas-loading')).toBeVisible()
   await expect(page.getByTestId('scene-canvas')).toBeVisible()
 
-  const fixture = createPerformanceScene(100)
-  await page.locator('input[type="file"]').setInputFiles({
-    name: 'performance.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify(fixture)),
-  })
-  await page.locator('.tab-list button').nth(1).click()
-  const target = page
-    .locator('.outliner-row')
-    .filter({ hasText: 'Performance table 001' })
-  await expect(target).toBeVisible()
-  const targetId = (await target.getAttribute('data-testid'))!.replace(
-    'outliner-entity-',
-    '',
-  )
+  const { fixture, targetId } = await loadPerformanceScene(page)
   const undo = page.getByRole('button', { name: '元に戻す' })
   const samples: number[] = []
-  const finalValue = 103
 
   for (let sample = 0; sample < 4; sample += 1) {
     await page.getByTestId('outliner-room').click()
@@ -137,32 +142,10 @@ test('100-object production selection and numeric edit median is below 250ms wit
 
   const measuredMedian = median(samples)
   console.log(
-    `Task 11 performance samples: ${JSON.stringify(samples)}, median: ${measuredMedian}`,
+    `131-entity performance samples: ${JSON.stringify(samples)}, median: ${measuredMedian}`,
   )
   expect(measuredMedian).toBeLessThan(250)
 
-  await page.getByRole('button', { name: 'プレビュー' }).click()
-  await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
-    'data-renderer-profile',
-    'preview',
-  )
-  const previewExport = await downloadText(page)
-  const previewTarget = (
-    JSON.parse(previewExport) as {
-      entities: { id: string; transform: { position: { x: number } } }[]
-    }
-  ).entities.find((entity) => entity.id === targetId)
-  expect(previewTarget?.transform.position.x).toBe(finalValue)
-  await page.getByRole('button', { name: '編集' }).click()
-  await undo.click()
-  const undoneExport = await downloadText(page)
-  expect(undoneExport).not.toBe(previewExport)
-  await page.getByRole('button', { name: 'やり直す' }).click()
-  expect(await downloadText(page)).toBe(previewExport)
-  await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
-    'data-renderer-profile',
-    'editor',
-  )
   expect(pageErrors).toEqual([])
   expect(consoleErrors).toEqual([])
 
@@ -183,10 +166,60 @@ test('100-object production selection and numeric edit median is below 250ms wit
       rendererGzipBytes: gzipSync(rendererAsset).length,
     },
   }
-  console.log(`Task 11 performance metrics: ${JSON.stringify(metrics)}`)
+  console.log(`131-entity performance metrics: ${JSON.stringify(metrics)}`)
   await testInfo.attach('performance-metrics.json', {
     body: JSON.stringify(metrics),
     contentType: 'application/json',
   })
   expect(statSync(join(process.cwd(), 'dist', entry!.file)).size).toBe(entryAsset.length)
+})
+
+test('preview preserves scene state across a minimal undo and redo round trip', async ({
+  page,
+}) => {
+  const pageErrors: Error[] = []
+  const consoleErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error))
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text())
+  })
+
+  await page.goto('/')
+  await expect(page.getByTestId('scene-canvas')).toBeVisible()
+  const { target, targetId } = await loadPerformanceScene(page)
+
+  await target.click()
+  await expect(page.locator('.inspector-title .muted-copy')).toHaveText(targetId)
+  const input = page.getByTestId('position-x')
+  const finalValue = 103
+  await input.fill(String(finalValue))
+  await input.press('Enter')
+
+  const undo = page.getByRole('button', { name: '元に戻す' })
+  const redo = page.getByRole('button', { name: 'やり直す', exact: true })
+  await expect(undo).toBeEnabled()
+  const editedExport = await downloadText(page)
+
+  await page.getByRole('button', { name: '高品質プレビュー', exact: true }).click()
+  await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
+    'data-renderer-profile',
+    'preview',
+  )
+  const previewExport = await downloadText(page)
+  expect(JSON.parse(previewExport)).toEqual(JSON.parse(editedExport))
+
+  await page.getByRole('button', { name: '編集に戻る', exact: true }).click()
+  await expect(page.getByTestId('scene-canvas')).toHaveAttribute(
+    'data-renderer-profile',
+    'editor',
+  )
+  await undo.click()
+  await expect(redo).toBeEnabled()
+  const undoneExport = await downloadText(page)
+  expect(undoneExport).not.toBe(editedExport)
+
+  await redo.click()
+  expect(await downloadText(page)).toBe(editedExport)
+  expect(pageErrors).toEqual([])
+  expect(consoleErrors).toEqual([])
 })
