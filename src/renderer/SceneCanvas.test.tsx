@@ -7,6 +7,8 @@ const canvasTestState = vi.hoisted(() => ({
   eventsProp: undefined as unknown,
   createPointerEvents: vi.fn(),
   baseEventFilter: vi.fn(),
+  lastEntityContextMenu: undefined as
+    ((id: string, event: MouseEvent) => void) | undefined,
 }))
 
 vi.mock('@react-three/fiber', () => ({
@@ -37,17 +39,22 @@ vi.mock('./SceneRoot', () => ({
   SceneRoot: ({
     store,
     onResizeStart,
+    onEntityContextMenu,
   }: {
     readonly store: { beginInteraction: (label: string) => boolean }
     readonly onResizeStart?: () => void
-  }) => (
-    <div
-      data-testid="resize-handle"
-      onPointerDown={() => {
-        if (store.beginInteraction('resize entity')) onResizeStart?.()
-      }}
-    />
-  ),
+    readonly onEntityContextMenu?: (id: string, event: MouseEvent) => void
+  }) => {
+    canvasTestState.lastEntityContextMenu = onEntityContextMenu
+    return (
+      <div
+        data-testid="resize-handle"
+        onPointerDown={() => {
+          if (store.beginInteraction('resize entity')) onResizeStart?.()
+        }}
+      />
+    )
+  },
 }))
 
 import { createEditorStore } from '../app/editor-store'
@@ -250,6 +257,59 @@ describe('SceneCanvas', () => {
       screen.getByRole('menuitem', { name: '最寄りの支持面に置く' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: '床に置く' })).toBeInTheDocument()
+  })
+
+  it('keeps entity context-menu callbacks stable while reading the latest store guards', () => {
+    let id = 0
+    const store = createEditorStore({
+      initialScene: createEmptyScene('6-tatami', {
+        idFactory: () => `scene-id-${++id}`,
+        now: () => '2026-01-01T00:00:00.000Z',
+      }),
+    })
+    const entityId = store.addCatalogItem('power.strip')!
+
+    canvasTestState.lastEntityContextMenu = undefined
+    render(<SceneCanvas store={store} webglAvailable={() => true} />)
+    const initialCallback = canvasTestState.lastEntityContextMenu as
+      ((id: string, event: MouseEvent) => void) | undefined
+    if (!initialCallback)
+      throw new Error('Expected SceneRoot to receive an entity callback.')
+
+    act(() => store.setActiveTool('resize'))
+    expect(canvasTestState.lastEntityContextMenu).toBe(initialCallback)
+
+    const visibleEditEvent = {
+      preventDefault: vi.fn(),
+      clientX: 40,
+      clientY: 50,
+    } as unknown as MouseEvent
+    act(() => initialCallback?.(entityId, visibleEditEvent))
+    expect(visibleEditEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3)
+    act(() => fireEvent.pointerDown(screen.getByTestId('scene-canvas')))
+
+    act(() => store.setMode('preview'))
+    const previewEvent = {
+      preventDefault: vi.fn(),
+      clientX: 40,
+      clientY: 50,
+    } as unknown as MouseEvent
+    act(() => initialCallback?.(entityId, previewEvent))
+    expect(previewEvent.preventDefault).not.toHaveBeenCalled()
+
+    act(() => {
+      store.setMode('edit')
+      store.setVisibility(entityId, false)
+    })
+    const hiddenEvent = {
+      preventDefault: vi.fn(),
+      clientX: 40,
+      clientY: 50,
+    } as unknown as MouseEvent
+    act(() => initialCallback?.(entityId, hiddenEvent))
+    expect(hiddenEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0)
   })
 
   it('only handles End when the edit canvas itself is focused', () => {

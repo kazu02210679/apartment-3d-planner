@@ -10,13 +10,16 @@ import {
   attributeLongTasks,
   classifyResizeSetup,
   classifyConsoleMessage,
+  classifyLongTaskWindow,
   compareCodePoints,
+  countEvidencePhaseOccurrences,
   longTasksOverlappingPhases,
   percentile,
   regenerateEvidenceSummary,
   rendererRuntimeRestored,
   resolvePreWindowLongTasks,
   summarizeSamples,
+  summarizeLongTaskWindow,
   summarizeCdpTrace,
   storageWritesInWindow,
   type EvidencePhaseSpan,
@@ -121,6 +124,68 @@ describe('evidence summary helpers', () => {
         finalSavedMatchesCanonical: false,
       }),
     ).toMatchObject({ status: 'FAIL', physicalWriteCoalescingValid: false })
+  })
+
+  it('derives direct autosave schedules from bounded resize phase witnesses', () => {
+    const phaseSpans: EvidencePhaseSpan[] = [
+      { phase: 'resize-autosave-schedule', startMs: 10, endMs: 11, durationMs: 1 },
+      { phase: 'resize-history', startMs: 12, endMs: 13, durationMs: 1 },
+      { phase: 'resize-autosave-schedule', startMs: 20, endMs: 21, durationMs: 1 },
+      { phase: 'resize-autosave-schedule', startMs: 30, endMs: 31, durationMs: 1 },
+      { phase: 'resize-autosave-schedule', startMs: 40, endMs: 41, durationMs: 1 },
+      { phase: 'resize-autosave-schedule', startMs: 50, endMs: 51, durationMs: 1 },
+    ]
+
+    expect(countEvidencePhaseOccurrences(phaseSpans, 'resize-autosave-schedule')).toBe(5)
+  })
+
+  it('classifies Long Tasks against an active schedule boundary without causal inference', () => {
+    expect(
+      classifyLongTaskWindow({ startMs: 5, durationMs: 10, name: 'self' }, 20, 40),
+    ).toBe('before-active')
+    expect(
+      classifyLongTaskWindow({ startMs: 25, durationMs: 10, name: 'self' }, 20, 40),
+    ).toBe('active-only')
+    expect(
+      classifyLongTaskWindow({ startMs: 35, durationMs: 10, name: 'self' }, 20, 40),
+    ).toBe('crosses-active')
+    expect(
+      classifyLongTaskWindow({ startMs: 45, durationMs: 10, name: 'self' }, 20, 40),
+    ).toBe('after-active')
+  })
+
+  it('summarizes paired-window boundaries and phase overlap without inferring causality', () => {
+    const longTasks: LongTaskSample[] = [
+      { startMs: 10, durationMs: 20, name: 'before' },
+      { startMs: 120, durationMs: 30, name: 'active' },
+      { startMs: 260, durationMs: 20, name: 'after' },
+    ]
+    const phaseSpans: EvidencePhaseSpan[] = [
+      { phase: 'pointermove-window', startMs: 100, endMs: 200, durationMs: 100 },
+      {
+        phase: 'pointerup-canonical-commit',
+        startMs: 200,
+        endMs: 250,
+        durationMs: 50,
+      },
+    ]
+    const summary = summarizeLongTaskWindow({
+      longTasks,
+      phaseSpans,
+      longTaskAttributions: attributeLongTasks(longTasks, phaseSpans),
+    })
+
+    expect(summary.activeSchedule).toEqual(phaseSpans[0])
+    expect(summary.longTasks.map(({ boundary }) => boundary)).toEqual([
+      'before-active',
+      'active-only',
+      'after-active',
+    ])
+    expect(summary.longTasks[1]).toMatchObject({
+      primaryPhase: 'pointermove-window',
+      causalAttribution: 'UNRESOLVED',
+      interpretation: 'temporal-overlap-only',
+    })
   })
 
   it('separates ordinary warnings from the accepted delayed Three.js chunk warning', () => {

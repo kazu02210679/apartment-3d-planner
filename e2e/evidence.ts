@@ -37,6 +37,25 @@ export interface LongTaskSample {
   readonly name: string
 }
 
+export type LongTaskWindowBoundary =
+  'before-active' | 'active-only' | 'crosses-active' | 'after-active'
+
+/**
+ * Classifies a Long Task against a measured active schedule interval.
+ * This is a temporal boundary label only; it does not infer app causality.
+ */
+export function classifyLongTaskWindow(
+  task: LongTaskSample,
+  activeStartMs: number,
+  activeEndMs: number,
+): LongTaskWindowBoundary {
+  const taskEndMs = task.startMs + task.durationMs
+  if (taskEndMs <= activeStartMs) return 'before-active'
+  if (task.startMs >= activeEndMs) return 'after-active'
+  if (task.startMs >= activeStartMs && taskEndMs <= activeEndMs) return 'active-only'
+  return 'crosses-active'
+}
+
 export type EvidencePhase =
   | 'page-chunk-warmup'
   | 'pointerdown'
@@ -427,6 +446,13 @@ export interface AutosaveEvidenceAssessment {
   readonly physicalWriteCoalescingValid: boolean
 }
 
+export function countEvidencePhaseOccurrences(
+  phaseSpans: readonly EvidencePhaseSpan[],
+  phase: EvidencePhase,
+): number {
+  return phaseSpans.filter((span) => span.phase === phase).length
+}
+
 export function assessAutosaveEvidence({
   successfulOperations,
   directlyObservedSchedules,
@@ -533,6 +559,45 @@ export function attributeLongTasks(
       interpretation: 'temporal-overlap-only',
     }
   })
+}
+
+export interface LongTaskWindowDiagnostic {
+  readonly activeSchedule: EvidencePhaseSpan | null
+  readonly longTasks: readonly (LongTaskAttribution & {
+    readonly boundary: LongTaskWindowBoundary | null
+  })[]
+}
+
+/**
+ * Retains temporal boundaries and phase overlap for a measured pointer window.
+ * A null boundary means the probe did not expose an active pointer schedule;
+ * neither this helper nor its callers infer application causality.
+ */
+export function summarizeLongTaskWindow(
+  probe: Pick<EvidenceProbeWindow, 'longTasks' | 'phaseSpans' | 'longTaskAttributions'>,
+): LongTaskWindowDiagnostic {
+  const activeSchedule =
+    probe.phaseSpans.find((span) => span.phase === 'pointermove-window') ?? null
+  const attributions =
+    probe.longTaskAttributions.length === probe.longTasks.length
+      ? probe.longTaskAttributions
+      : attributeLongTasks(probe.longTasks, probe.phaseSpans)
+  return {
+    activeSchedule,
+    longTasks: probe.longTasks.map((task, index) => ({
+      ...(attributions[index] ?? {
+        task,
+        primaryPhase: 'unattributed' as const,
+        overlaps: [],
+        unattributedMs: task.durationMs,
+        causalAttribution: 'UNRESOLVED' as const,
+        interpretation: 'temporal-overlap-only' as const,
+      }),
+      boundary: activeSchedule
+        ? classifyLongTaskWindow(task, activeSchedule.startMs, activeSchedule.endMs)
+        : null,
+    })),
+  }
 }
 
 export function longTasksOverlappingPhases(

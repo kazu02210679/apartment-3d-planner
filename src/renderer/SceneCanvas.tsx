@@ -166,9 +166,10 @@ export function SceneCanvas({
   }, [clearSelection])
   const openPlacementMenu = useCallback(
     (entityId: string, clientX: number, clientY: number) => {
+      const currentSnapshot = store.getSnapshot()
       if (
-        snapshot.mode !== 'edit' ||
-        !isPlacementEntityEligible(snapshot.scene, entityId) ||
+        currentSnapshot.mode !== 'edit' ||
+        !isPlacementEntityEligible(currentSnapshot.scene, entityId) ||
         !canvasRef.current
       )
         return
@@ -179,15 +180,15 @@ export function SceneCanvas({
         top: Math.max(8, clientY - bounds.top),
       })
     },
-    [snapshot.mode, snapshot.scene],
+    [store],
   )
   const onEntityContextMenu = useCallback(
     (entityId: string, event: MouseEvent) => {
-      if (snapshot.mode !== 'edit') return
+      if (store.getSnapshot().mode !== 'edit') return
       event.preventDefault()
       openPlacementMenu(entityId, event.clientX, event.clientY)
     },
-    [openPlacementMenu, snapshot.mode],
+    [openPlacementMenu, store],
   )
   const onCanvasContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {

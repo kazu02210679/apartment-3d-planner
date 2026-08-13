@@ -11,7 +11,9 @@ import {
   assessBoundedWindowDuration,
   assessFrameWindow,
   attachPageDiagnostics,
+  classifyLongTaskWindow,
   classifyResizeSetup,
+  countEvidencePhaseOccurrences,
   collectRuntimeEnvironment,
   digestJson,
   dragForWindow,
@@ -33,6 +35,7 @@ import {
   rendererRuntimeRestored,
   resetRendererEvidenceCounters,
   summarizeSamples,
+  summarizeLongTaskWindow,
   startEvidencePhase,
   startEvidenceWindow,
   startChromiumCdpTrace,
@@ -1912,6 +1915,22 @@ test('AC-007 transform has a five-second headed raw trace with 300+ updates', as
     'TransformControls X handle',
   )
   const end = outwardPoint(center, handle, 80)
+  const inertPoint = await findInertPointerPoint(page)
+  await page.mouse.move(inertPoint.x, inertPoint.y)
+  const inertCdpCapture = await startChromiumCdpTrace(page, 'ac-007-transform-inert-cdp')
+  await startEvidenceWindow(page, 'ac-007-transform-inert-transport-5s')
+  const inertBaseline = await inertPointerMoveTransportBaseline(
+    page,
+    inertPoint,
+    8,
+    LONG_WINDOW_MS,
+    LONG_UPDATE_COUNT,
+  )
+  const inertProbe = await stopEvidenceWindow(page)
+  const inertCdpTrace = await inertCdpCapture.stop(
+    inertProbe.longTasks,
+    inertProbe.preWindowLongTasks,
+  )
   await page.mouse.move(handle.x, handle.y)
   await resetRendererEvidenceCounters(page)
   const cdpCapture = await startChromiumCdpTrace(page, 'ac-007-transform-cdp')
@@ -1920,6 +1939,19 @@ test('AC-007 transform has a five-second headed raw trace with 300+ updates', as
   const stable = await settleInteractionWindow(page)
   const probe = await stopEvidenceWindow(page)
   const cdpTrace = await cdpCapture.stop(probe.longTasks, probe.preWindowLongTasks)
+  const activeSchedule = probe.phaseSpans.find(
+    (span) => span.phase === 'pointermove-window',
+  )
+  const activeScheduleLongTasks = activeSchedule
+    ? probe.longTasks.map((task) => ({
+        task,
+        boundary: classifyLongTaskWindow(
+          task,
+          activeSchedule.startMs,
+          activeSchedule.endMs,
+        ),
+      }))
+    : []
   const interactionCounters = await readRendererEvidenceCounters(page)
   const assessment = longWindowAssessment(probe)
   const after = await exportedScene(page)
@@ -1927,6 +1959,45 @@ test('AC-007 transform has a five-second headed raw trace with 300+ updates', as
   const finalCounters = await readRendererEvidenceCounters(page)
   const rendererAfter = await readRendererRuntime(page)
   const diagnostics = diagnosticsFor(pageDiagnostics, await readProbeDiagnostics(page))
+
+  // Diagnostic-only control: repeat the same TransformControls pointerdown/up
+  // without moving the pointer. This isolates pointerup/R3F dispatch from the
+  // canonical geometry-change path; it is intentionally excluded from AC-007
+  // acceptance counters and does not infer causality by itself.
+  await page.getByTestId('tool-move').click()
+  const targetRow = page.locator(`[data-testid="outliner-entity-${targetId}"]`)
+  await expect(targetRow).toBeVisible()
+  await targetRow.click()
+  const noGeometryHandle = await waitForPoint(
+    () => projectedTransformHandle(page, 'X'),
+    'TransformControls X handle for no-op pointerup comparison',
+  )
+  await page.mouse.move(noGeometryHandle.x, noGeometryHandle.y)
+  await resetRendererEvidenceCounters(page)
+  const noGeometryCdpCapture = await startChromiumCdpTrace(
+    page,
+    'ac-007-transform-noop-pointerup-cdp',
+  )
+  await startEvidenceWindow(page, 'ac-007-transform-noop-pointerup')
+  const noGeometryDownPhase = await startEvidencePhase(page, 'pointerdown')
+  try {
+    await page.mouse.down()
+  } finally {
+    await endEvidencePhase(page, noGeometryDownPhase)
+  }
+  const noGeometryUpPhase = await startEvidencePhase(page, 'pointerup-canonical-commit')
+  try {
+    await page.mouse.up()
+  } finally {
+    await endEvidencePhase(page, noGeometryUpPhase)
+  }
+  await page.waitForTimeout(250)
+  const noGeometryProbe = await stopEvidenceWindow(page)
+  const noGeometryCdpTrace = await noGeometryCdpCapture.stop(
+    noGeometryProbe.longTasks,
+    noGeometryProbe.preWindowLongTasks,
+  )
+  const noGeometryCounters = await readRendererEvidenceCounters(page)
   const autosaveWrites = probe.storageWrites.filter(
     (write) => write.key === 'home-lab-scene',
   ).length
@@ -1961,6 +2032,23 @@ test('AC-007 transform has a five-second headed raw trace with 300+ updates', as
       passed: autosaveWrites === 1,
       observed: autosaveWrites,
       threshold: 1,
+    },
+    {
+      name: 'inert-transport-baseline-captured',
+      passed:
+        inertBaseline.updateCount === LONG_UPDATE_COUNT &&
+        inertBaseline.elapsedMs >= LONG_WINDOW_MS &&
+        inertProbe.durationMs >= LONG_WINDOW_MS,
+      observed: {
+        requestedUpdates: inertBaseline.updateCount,
+        observedPointerMoves: inertProbe.eventCounts.pointermove ?? 0,
+        elapsedMs: inertBaseline.elapsedMs,
+        observedProbeDurationMs: inertProbe.durationMs,
+      },
+      threshold: {
+        updates: LONG_UPDATE_COUNT,
+        durationMs: LONG_WINDOW_MS,
+      },
     },
   ]
   const status = checks.every((check) => check.passed) ? 'PASS' : 'FAIL'
@@ -2001,6 +2089,55 @@ test('AC-007 transform has a five-second headed raw trace with 300+ updates', as
       autosaveWrites,
       rawPostCommitStorageWrites: probe.storageWrites,
       longTaskAttributions: probe.longTaskAttributions,
+      activeScheduleBoundary: {
+        phase: activeSchedule,
+        longTasks: activeScheduleLongTasks,
+      },
+      inertTransportBaseline: {
+        point: inertPoint,
+        requestedDurationMs: LONG_WINDOW_MS,
+        requestedUpdateCount: LONG_UPDATE_COUNT,
+        elapsedMs: inertBaseline.elapsedMs,
+        observedProbeDurationMs: inertProbe.durationMs,
+        observedPointerMoves: inertProbe.eventCounts.pointermove ?? 0,
+        frameSummary: summarizeSamples(inertProbe.frameIntervals),
+        handlerSummary: summarizeSamples(
+          inertProbe.handlerDurations.map((sample) => sample.durationMs),
+        ),
+        longTasks: inertProbe.longTasks,
+        preWindowLongTasks: inertProbe.preWindowLongTasks,
+        cdpTrace: {
+          tracePath: 'docs/reports/evidence/traces/ac-007-transform-inert-cdp.trace',
+          attributionPath:
+            'docs/reports/evidence/traces/ac-007-transform-inert-cdp.attribution.json',
+          traceSizeBytes: inertCdpTrace.traceSizeBytes,
+          summary: inertCdpTrace.summary,
+        },
+      },
+      noGeometryPointerup: {
+        handle: noGeometryHandle,
+        probeDurationMs: noGeometryProbe.durationMs,
+        pointerDown: noGeometryProbe.eventCounts.pointerdown ?? 0,
+        pointerUp: noGeometryProbe.eventCounts.pointerup ?? 0,
+        pointerMoves: noGeometryProbe.eventCounts.pointermove ?? 0,
+        longTasks: noGeometryProbe.longTasks,
+        phaseSpans: noGeometryProbe.phaseSpans.filter(
+          (span) =>
+            span.phase === 'pointerdown' ||
+            span.phase === 'pointerup-canonical-commit' ||
+            span.phase === 'canonical-interaction-update' ||
+            span.phase === 'canonical-commit-store-publication',
+        ),
+        counters: noGeometryCounters,
+        cdpTrace: {
+          tracePath:
+            'docs/reports/evidence/traces/ac-007-transform-noop-pointerup-cdp.trace',
+          attributionPath:
+            'docs/reports/evidence/traces/ac-007-transform-noop-pointerup-cdp.attribution.json',
+          traceSizeBytes: noGeometryCdpTrace.traceSizeBytes,
+          summary: noGeometryCdpTrace.summary,
+        },
+      },
       cdpTrace: {
         tracePath: 'docs/reports/evidence/traces/ac-007-transform-cdp.trace',
         attributionPath:
@@ -2021,6 +2158,9 @@ test('AC-007 transform has a five-second headed raw trace with 300+ updates', as
       'Production build was served by Playwright webServer in headed Chromium.',
       'Handler samples are every wrapped pointer listener callback; raw arrays are retained.',
       'Every raw Long Task is retained. CDP attribution reports renderer-main exclusive timeline intervals, GPU-process overlap, and pre-window warm-up separately; it does not claim product causality.',
+      'The inert transport baseline uses the same page/context, five-second schedule, and 360 pointer moves; it is diagnostic only and does not assign causality.',
+      'Active-schedule Long Task boundary labels compare time intervals only and do not infer application causality.',
+      'A same-handle pointerdown/up without geometry movement is retained as a diagnostic comparison; it is not folded into the AC-007 acceptance window or treated as causal proof.',
       'H1, H2, and H3 remain unresolved where the trace cannot causally identify the remaining task duration.',
       'The bridge counter is store notification count, not exact complete-scene publication count.',
     ],
@@ -2220,6 +2360,7 @@ async function runPairedTransform(
   historyCount: number,
   label: string,
 ) {
+  const cdpCapture = await startChromiumCdpTrace(page, `ac-007-transform-${label}-cdp`)
   const targetId = await loadFixture(page, fixture, `ac-007-${label}.json`)
   await page.getByTestId('tool-move').click()
   const nudge = page.locator('.scene-camera-controls button').first()
@@ -2238,6 +2379,7 @@ async function runPairedTransform(
   await startEvidenceWindow(page, `ac-007-transform-${label}`)
   await dragForWindow(page, handle, end, LONG_WINDOW_MS, LONG_UPDATE_COUNT, true)
   const probe = await stopEvidenceWindow(page)
+  const cdpTrace = await cdpCapture.stop(probe.longTasks, probe.preWindowLongTasks)
   const assessment = longWindowAssessment(probe)
   const after = await exportedScene(page)
   const postCommitProbe = await waitForAutosave(
@@ -2245,7 +2387,30 @@ async function runPairedTransform(
     `ac-007-transform-${label}-autosave`,
   )
   const commandProof = await proveSingleCanonicalCommand(page, before, after)
-  return { probe, assessment, before, after, commandProof, postCommitProbe }
+  const windowDiagnostic = summarizeLongTaskWindow(probe)
+  const diagnosticPhases = new Set([
+    'pointerdown',
+    'pointermove-window',
+    'pointerup-canonical-commit',
+    'canonical-interaction-begin',
+    'canonical-interaction-update',
+    'canonical-commit-store-publication',
+    'store-notification',
+    'render',
+  ])
+  return {
+    probe,
+    assessment,
+    before,
+    after,
+    commandProof,
+    postCommitProbe,
+    cdpTrace,
+    windowDiagnostic,
+    diagnosticPhaseSpans: probe.phaseSpans.filter((span) =>
+      diagnosticPhases.has(span.phase),
+    ),
+  }
 }
 
 test('AC-007 paired transform compares zero-history and 50-history p95', async ({
@@ -2324,6 +2489,17 @@ test('AC-007 paired transform compares zero-history and 50-history p95', async (
         longTaskSummary: zero.assessment.longTaskSummary,
         commandProof: zero.commandProof,
         autosaveWrites: zero.postCommitProbe.storageWrites,
+        probeDurationMs: zero.probe.durationMs,
+        eventCounts: zero.probe.eventCounts,
+        eventTimes: zero.probe.eventTimes,
+        phaseSpans: zero.diagnosticPhaseSpans,
+        longTaskBoundaryDiagnostics: zero.windowDiagnostic,
+        cdpTrace: {
+          tracePath: zero.cdpTrace.tracePath,
+          attributionPath: zero.cdpTrace.attributionPath,
+          traceSizeBytes: zero.cdpTrace.traceSizeBytes,
+          summary: zero.cdpTrace.summary,
+        },
       },
       history50: {
         handlerDurations: history.probe.handlerDurations,
@@ -2334,6 +2510,17 @@ test('AC-007 paired transform compares zero-history and 50-history p95', async (
         longTaskSummary: history.assessment.longTaskSummary,
         commandProof: history.commandProof,
         autosaveWrites: history.postCommitProbe.storageWrites,
+        probeDurationMs: history.probe.durationMs,
+        eventCounts: history.probe.eventCounts,
+        eventTimes: history.probe.eventTimes,
+        phaseSpans: history.diagnosticPhaseSpans,
+        longTaskBoundaryDiagnostics: history.windowDiagnostic,
+        cdpTrace: {
+          tracePath: history.cdpTrace.tracePath,
+          attributionPath: history.cdpTrace.attributionPath,
+          traceSizeBytes: history.cdpTrace.traceSizeBytes,
+          summary: history.cdpTrace.summary,
+        },
       },
       historyCount: 50,
       zeroHistoryHandlerP95Ms: zeroP95,
@@ -2610,9 +2797,16 @@ test('AC-008 five commits record criterion status without promoting runner accep
 
   const probe = await stopEvidenceWindow(page)
   const autosaveWrites = storageWritesInWindow(probe.storageWrites, 0, probe.durationMs)
+  const autosaveScheduleSpans = probe.phaseSpans.filter(
+    (span) => span.phase === 'resize-autosave-schedule',
+  )
+  const directlyObservedSchedules = countEvidencePhaseOccurrences(
+    probe.phaseSpans,
+    'resize-autosave-schedule',
+  )
   const autosaveAssessment = assessAutosaveEvidence({
     successfulOperations: 5,
-    directlyObservedSchedules: null,
+    directlyObservedSchedules,
     physicalWrites: autosaveWrites.length,
     finalSavedMatchesCanonical,
   })
@@ -2804,6 +2998,8 @@ test('AC-008 five commits record criterion status without promoting runner accep
         afterUndoRedo: finalCounters.history,
       },
       storeNotificationCount: afterCommitCounters.storeNotifications,
+      autosaveScheduleCount: directlyObservedSchedules,
+      autosaveScheduleWitness: autosaveScheduleSpans,
       autosaveWrites,
       autosaveAssessment,
       finalSavedMatchesCanonical,
@@ -2822,7 +3018,7 @@ test('AC-008 five commits record criterion status without promoting runner accep
       'The command witness undoes and redoes all five gestures as five exact history entries.',
       'The autosave observation window ends after the five commit saves and before the separate Undo/Redo history proof.',
       'Physical localStorage writes may coalesce under the 250ms debounce; the final persisted current document is compared with the fifth canonical scene.',
-      'No public seam directly counts autosave schedule calls, so that requirement remains UNRESOLVED rather than inferring five schedules from physical writes.',
+      'The bounded resize-autosave-schedule phase spans directly witness each autosave schedule call; physical writes remain separately measured for debounce/coalescing.',
       'Resize interactionUpdates count store update calls, not renderer-only transient geometry changes, and is recorded as diagnostic data only.',
       'Runner acceptance means only that the artifact was generated and is PASS or UNRESOLVED; an UNRESOLVED artifact is never a criterion PASS.',
     ],

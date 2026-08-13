@@ -3,39 +3,51 @@
   "manifestType": "v1-review-improvements-evidence-provenance",
   "repository": "apartment-3d-planner",
   "candidate": {
-    "sha": "c53d5d51c6cd7bd219819cc4d2cd4ba58f73bee3",
-    "state": "current HEAD plus uncommitted candidate",
+    "sha": "06ea4801d7ebdda99b7d8d412969d953c9371a84",
+    "state": "HEAD plus uncommitted product callback fix/test, evidence-harness, and report candidate",
     "fullCandidateSha": null
   },
   "provenance": {
     "executionDate": "2026-08-14",
     "timezone": "Asia/Tokyo",
-    "headSha": "c53d5d51c6cd7bd219819cc4d2cd4ba58f73bee3",
+    "headSha": "06ea4801d7ebdda99b7d8d412969d953c9371a84",
     "workingTree": "uncommitted candidate; full-tree SHA unavailable until commit",
+    "changedFiles": [
+      "e2e/evidence.ts",
+      "e2e/evidence.test.ts",
+      "e2e/evidence.spec.ts",
+      "src/renderer/SceneCanvas.tsx",
+      "src/renderer/SceneCanvas.test.tsx",
+      "docs/reports/v1-review-improvements-status.md",
+      "docs/reports/v1-review-improvements-evidence-manifest.json"
+    ],
     "rawAndTraceTracking": "ignored local evidence; not tracked"
   },
   "execution": {
     "normalE2ECommand": "npm.cmd run test:e2e -- --headed",
     "strictEvidenceCommand": "npm.cmd run test:e2e:evidence -- --headed",
+    "targetedAC008Command": "npm.cmd run test:e2e:evidence -- --headed --grep \"AC-008 five commits\"",
+    "targetedAC019Command": "npm.cmd run test:e2e:evidence -- --headed --grep \"AC-019 100-entity\"",
     "buildAndServeCommand": "npm.cmd run build && tsx scripts/serve-dist.ts",
     "strictPairedTransformTestTimeoutMs": 120000,
     "strictPairedTransformTimeoutPolicy": "test-unit timeout matches measurement content; no retry",
     "retries": 0,
-    "strictEvidenceScope": "targeted AC-019 only on 2026-08-14; strict suite全体は再実行していない"
+    "strictEvidenceScope": "Full 14-test headed suite on the current uncommitted candidate (12 pass, 2 fail: AC-007 paired transform and AC-022 diagnostics), plus targeted callback/helper, AC-007 transform/paired, AC-008, and AC-019 runs; retries=0.",
+    "strictFullSuiteProvenance": "The final full suite ran after the uncommitted SceneCanvas callback fix and harness changes. Immutable product HEAD remote verification remains run 31721281066 success; current uncommitted candidate has no remote CI run."
   },
   "environment": {
-    "os": "Windows 11",
+    "os": "Windows 11 Home",
     "node": "22.22.0",
     "browser": "Chromium 151.0.7922.34",
-    "viewport": {
-      "width": 1440,
-      "height": 900
-    }
+    "viewport": { "width": 1440, "height": 900 },
+    "cpu": "AMD Ryzen 9 7950X3D, 32 logical CPUs",
+    "memoryBytes": 67737395200
   },
   "normalVerification": {
+    "status": "PASS_AFTER_HARNESS_CHANGE",
     "fullUnit": {
       "files": 37,
-      "tests": 252,
+      "tests": 256,
       "status": "PASS"
     },
     "checks": {
@@ -47,159 +59,212 @@
       "build": "PASS"
     },
     "headedE2E": {
+      "status": "PASS_AFTER_HARNESS_CHANGE",
       "passed": 16,
       "total": 16,
-      "retries": 0,
-      "samplesMs": [55.1, 53.3, 52.2],
-      "medianMs": 53.3,
-      "status": "PASS"
+      "retries": 0
     },
-    "build": {
-      "vite": "7.3.6",
-      "modules": 662,
-      "entryKb": 352.01,
-      "sceneCanvasKb": 1002.75,
-      "knownWarnings": [">500 kB bundle warning from delayed Three.js chunk"]
-    }
+    "build": { "knownWarnings": [">500 kB warning from delayed Three.js chunk"] }
   },
   "strictVerification": {
-    "tests": {
-      "total": 14,
-      "passed": 9,
-      "failed": 5,
+    "fullSuite": {
+      "tests": 14,
+      "passed": 12,
+      "failed": 2,
       "retries": 0,
-      "status": "HISTORICAL_NOT_RERUN_ON_2026-08-14"
+      "status": "RUN_ON_HEAD_PLUS_UNCOMMITTED_PRODUCT_AND_HARNESS_CANDIDATE",
+      "failedTests": [
+        "AC-007 paired transform compares zero-history and 50-history p95",
+        "AC-022 classifies browser diagnostics and the delayed renderer chunk warning"
+      ]
     },
     "targetedRuns": {
+      "AC-008": {
+        "tests": 1,
+        "passed": 1,
+        "status": "PASS",
+        "rawPath": "docs/reports/evidence/raw/ac-008-five-commit-series.json",
+        "rawSizeBytes": 1046698,
+        "rawSha256": "6144636842f6fee0b978c3781db4ea9f22f0b364af80d25ac6a64275973b5782",
+        "directScheduleCount": 5,
+        "directScheduleWitnessCount": 5,
+        "physicalWrites": 1,
+        "finalSavedMatchesCanonical": true,
+        "autosaveAssessment": "PASS",
+        "harnessFix": "Count bounded resize-autosave-schedule phase spans instead of passing null; retained witness spans in counters."
+      },
       "AC-019": {
         "tests": 1,
         "passed": 1,
-        "outerElapsedSeconds": 36.1,
-        "rawStatus": "PASS",
-        "rawPath": "docs/reports/evidence/raw/ac-019-preview-100-entity.json",
-        "rawSizeBytes": 3176843,
-        "rawSha256": "CFAAE79734E097DB364F92F0068D7B261E899D0B292EF6A84017C1FD31200446",
-        "requestedDurationMs": 10000,
-        "actualElapsedMs": 10032.3,
-        "allowedDurationMs": {
-          "minimum": 10000,
-          "maximum": 20000
-        },
-        "transportBaselineMs": 10012,
-        "orbitHelperElapsedMs": 10012,
-        "transportDeltaMs": 0,
-        "frameP95Ms": 6.3,
-        "longTasksOver50Ms": 0,
-        "longTasksOver100Ms": 0,
-        "checks": {
-          "cameraState": "PASS",
-          "cameraRemount": "PASS",
-          "tierBoundaries": "PASS",
-          "settling": "PASS",
-          "orbitChanged": "PASS",
-          "canonicalExportUnchanged": "PASS",
-          "zeroWrites": "PASS"
-        },
-        "previousSameHarnessRun": {
-          "actualElapsedMs": 99560,
-          "frameP95Ms": 66.5,
-          "longTasks": 356,
-          "status": "FAIL"
-        },
-        "repeatability": "UNPROVEN_SINGLE_LATEST_PASS_WITH_LARGE_ENVIRONMENT_VARIATION"
+        "status": "UNPROVEN_SINGLE_CURRENT_CANDIDATE_PASS",
+        "retainedRawPath": "docs/reports/evidence/raw/ac-019-preview-100-entity.json",
+        "retainedRawSizeBytes": 3239724,
+        "retainedRawSha256": "83f8a0d07a9480c1de0a241646e1c7a3a3b2f55ff877b0bb9ae61d8aabceccb6",
+        "repeatability": "UNPROVEN_SINGLE_CURRENT_CANDIDATE_PASS; prior measurements are historical mixed-provenance because dirty-state-specific immutable raw artifacts were not retained; earlier approximately 99.6-second same-harness failure remains historical variation",
+        "historicalMeasurements": [
+          {
+            "actualElapsedMs": 10031.9,
+            "frameP95Ms": 6.4,
+            "transportDeltaMs": 8,
+            "longTasksOver50Ms": 0,
+            "longTasksOver100Ms": 0,
+            "provenance": "HEAD_06EA4801_FULL_SUITE_BEFORE_HARNESS_CHANGE",
+            "rawRetained": false
+          },
+          {
+            "actualElapsedMs": 10032.2,
+            "frameP95Ms": 6.3,
+            "transportDeltaMs": 4,
+            "longTasksOver50Ms": 0,
+            "longTasksOver100Ms": 0,
+            "provenance": "HEAD_PLUS_UNCOMMITTED_HARNESS_TARGETED",
+            "rawRetained": false
+          },
+          {
+            "actualElapsedMs": 10032.2,
+            "frameP95Ms": 6.3,
+            "transportDeltaMs": 4,
+            "longTasksOver50Ms": 0,
+            "longTasksOver100Ms": 0,
+            "provenance": "HEAD_PLUS_UNCOMMITTED_HARNESS_TARGETED",
+            "rawRetained": true
+          }
+        ],
+        "historicalMeasurementChecks": "PASS where recorded; not a current repeatability claim"
       }
     },
     "acceptanceCriteria": [
       {
         "id": "AC-007",
         "status": "FAIL",
-        "transform": {
-          "handlerP95Ms": 0.1,
-          "handlerMaxMs": 13.4,
-          "frameP95Ms": 33.4,
+        "retainedHistoricalTransformRaw": {
+          "path": "docs/reports/evidence/raw/ac-007-transform-5s.json",
+          "status": "FAIL",
+          "provenance": "HISTORICAL_RETAINED_PRE_CALLBACK_RAW; current evidence.spec does not regenerate this path; summary projection only",
+          "frameP95Ms": 12.5,
           "frameThresholdMs": 25,
+          "handlerP95Ms": 0.1,
+          "handlerMaxMs": 8.8,
+          "longTasksOver50Ms": 2,
+          "longTasksOver100Ms": 1,
+          "rawSha256": "b5358a914bc94a72f729192e8c9197a2bc22c7ecb191bf97049b8bcd634d8961"
+        },
+        "targetedAttributedTransformRaw": {
+          "path": "docs/reports/evidence/raw/ac-007-transform-attributed-5s.json",
+          "status": "PASS",
+          "frameP95Ms": 6.4,
           "longTasksOver50Ms": 1,
+          "longTasksOver100Ms": 0,
+          "rawSha256": "39625aa7b545237f18b4959ac96870bccc3c7591e476a8dc18ab6994c386e7d1"
+        },
+        "pairedHistoryRaw": {
+          "path": "docs/reports/evidence/raw/ac-007-transform-paired-history.json",
+          "status": "FAIL",
+          "zeroHistoryWindowPass": false,
+          "fiftyHistoryWindowPass": false,
+          "zeroHistoryLongTasksOver50Ms": 2,
+          "zeroHistoryLongTaskMaxMs": 69,
+          "zeroHistoryBoundarySummary": "before-active 56 ms; after-active pointerup 69 ms",
+          "fiftyHistoryLongTasksOver50Ms": 2,
+          "fiftyHistoryLongTaskMaxMs": 96,
+          "fiftyHistoryBoundarySummary": "before-active 96 ms; after-active pointerup 58 ms",
+          "p95RegressionLimitPass": true,
+          "exactlyOneCommandBothWindows": true,
+          "rawSha256": "89d51adaf3994822295198d0b7b1a0ac62a7352f502cd4631031154c62b795f2"
+        },
+        "resizeRaw": {
+          "status": "PASS",
+          "frameP95Ms": 6.4,
+          "longTasksOver50Ms": 0,
           "longTasksOver100Ms": 0
         },
+        "diagnosticAttributedAndPaired": "Attribution targeted raw PASS locally, but paired/full strict acceptance FAILs on zero/50-history Long Task windows; CDP/page phase overlap is temporal-only and app causality remains UNRESOLVED",
         "harnessFollowUp": {
           "cdpPreWindowLongTasksReferenceError": "RESOLVED",
           "pairedTransformTimeout": "RESOLVED",
-          "performanceThreshold": "FAIL remains"
+          "performanceThreshold": "FAIL remains in paired/full strict current candidate"
         }
       },
       {
         "id": "AC-008",
-        "status": "TARGETED_PASS_RAW_UNRESOLVED",
-        "targetedStrictFiveCommit": "PASS",
+        "status": "PASS",
+        "fiveCommitRawSha256": "6144636842f6fee0b978c3781db4ea9f22f0b364af80d25ac6a64275973b5782",
+        "directScheduleWitness": {
+          "count": 5,
+          "phase": "resize-autosave-schedule",
+          "retained": true
+        },
+        "physicalWrites": 1,
+        "finalSavedMatchesCanonical": true,
         "afterEscapeAndAfterCleanupSeparated": true,
         "inertReleaseBeforeExportWait": true,
-        "rawArtifacts": {
-          "fiveCommitSeries": "UNRESOLVED",
-          "fiveCommitSeriesAttempt1": "FAIL",
-          "orbit5s": "UNRESOLVED"
-        },
-        "unresolvedReason": "direct autosave schedule witness unavailable in the retained raw artifact"
+        "orbit5s": "UNRESOLVED (historical artifact)"
       },
       {
         "id": "AC-019",
-        "status": "TARGETED_PASS_REPEATABILITY_UNPROVEN",
-        "fullSuiteStatus": "HISTORICAL_FAIL_NOT_RERUN",
-        "targetedStatus": "PASS",
-        "targetedTests": 1,
-        "targetedPassed": 1,
-        "outerElapsedSeconds": 36.1,
+        "status": "UNPROVEN_SINGLE_CURRENT_CANDIDATE_PASS",
+        "currentCandidateRuns": 1,
+        "historicalMeasurementCount": 3,
+        "historicalMeasurementClassification": "THREE_PASS_MEASUREMENTS_MIXED_PROVENANCE",
         "requestedDurationMs": 10000,
-        "actualElapsedMs": 10032.3,
-        "allowedDurationMs": {
-          "minimum": 10000,
-          "maximum": 20000
-        },
-        "transportBaselineMs": 10012,
-        "orbitHelperElapsedMs": 10012,
-        "transportDeltaMs": 0,
-        "frameP95Ms": 6.3,
+        "allowedDurationMs": { "minimum": 10000, "maximum": 20000 },
+        "latestActualElapsedMs": 11237.3,
+        "latestFrameP95Ms": 6.4,
+        "latestTransportDeltaMs": 1208,
         "longTasksOver50Ms": 0,
         "longTasksOver100Ms": 0,
-        "cameraState": "PASS",
-        "cameraRemount": "PASS",
-        "tierBoundaries": "PASS",
-        "settling": "PASS",
-        "orbitChanged": "PASS",
-        "canonicalExportUnchanged": "PASS",
-        "zeroWrites": "PASS",
+        "thresholdsRelaxed": false,
         "previousSameHarnessRun": {
           "actualElapsedMs": 99560,
           "frameP95Ms": 66.5,
           "longTasks": 356,
           "status": "FAIL"
         },
-        "repeatability": "UNPROVEN_SINGLE_LATEST_PASS_WITH_LARGE_ENVIRONMENT_VARIATION",
-        "thresholdsRelaxed": false,
-        "tierMatrix": {
-          "status": "PASS",
-          "probeWindow": "separate from the 10-second orbit window",
-          "actualEqualsConfigured": "PASS",
-          "canonicalHistoryStorageZeroWrites": "PASS"
-        }
+        "latestRetainedRaw": {
+          "path": "docs/reports/evidence/raw/ac-019-preview-100-entity.json",
+          "sizeBytes": 3239724,
+          "sha256": "83f8a0d07a9480c1de0a241646e1c7a3a3b2f55ff877b0bb9ae61d8aabceccb6",
+          "actualElapsedMs": 11237.3,
+          "frameP95Ms": 6.4,
+          "longTasksOver50Ms": 0,
+          "longTasksOver100Ms": 0,
+          "provenance": "CURRENT_CANDIDATE_FULL_STRICT_RAW_OVERWRITE"
+        },
+        "currentRepeatability": "UNPROVEN_SINGLE_CURRENT_CANDIDATE_PASS"
       },
       {
         "id": "AC-022",
         "status": "FAIL",
-        "warnings": {
-          "THREE.Clock": 1,
-          "GPU ReadPixels": 4
-        },
+        "rawPath": "docs/reports/evidence/raw/ac-022-browser-diagnostics.json",
+        "rawSha256": "b0a1e313e2a15d466c1a8c2e3e16eca263409fc2b8a1272003dbc3b4fe9f3d5e",
+        "warnings": { "THREE.Clock": 1 },
         "errors": 0,
         "pageErrors": 0,
+        "failedRequests": 0,
         "missingAssets": 0,
-        "clockWarningSuppressed": false
+        "shaderErrors": 0,
+        "rootCause": "R3F 9.7.0 bundled store constructs THREE.Clock; Three 0.185.1 deprecates Clock since r183. R3F 9.7.0 is latest stable. No console suppression."
       }
     ],
     "linux": {
       "status": "UNRESOLVED",
       "errorCode": "Wsl/Service/CreateInstance/E_ACCESSDENIED",
-      "summary": "Linux strict evidence remains unresolved; Windows headed evidence and functional CI are separate evidence boundaries."
+      "summary": "Windows headed evidence and functional CI are separate boundaries and do not substitute for Linux strict evidence."
     }
+  },
+  "dependencyAudit": {
+    "full": {
+      "status": "COMPLETED_WITH_FINDING",
+      "high": 1,
+      "moderate": 0,
+      "low": 0,
+      "critical": 0,
+      "finding": "nanoid@3.3.17 via vite@7.3.6 -> postcss@8.5.25; dev-only path",
+      "advisory": "GHSA-2v37-7h3g-55p8",
+      "fixAvailable": true
+    },
+    "omitDev": { "status": "NOT_RUN_POLICY_BLOCKED_REGISTRY_EGRESS" },
+    "localClassification": "npm explain/npm ls show nanoid is reachable only from root devDependency vite; runtime dependencies do not include it."
   },
   "gpc": {
     "status": "BLOCKED",
@@ -208,42 +273,54 @@
     "recovery": "not attempted"
   },
   "remoteCi": {
-    "headSha": "c53d5d51c6cd7bd219819cc4d2cd4ba58f73bee3",
-    "runId": 31648056018,
-    "status": "success",
-    "currentUncommittedCandidateCi": "NOT_RUN"
+    "productHeadSha": "06ea4801d7ebdda99b7d8d412969d953c9371a84",
+    "productHeadRunId": 31721281066,
+    "productHeadStatus": "success",
+    "currentCandidateCi": "NOT_RUN_UNCOMMITTED_PRODUCT_AND_HARNESS_DOCS",
+    "historicalPriorRun": {
+      "headSha": "c53d5d51c6cd7bd219819cc4d2cd4ba58f73bee3",
+      "runId": 31648056018,
+      "status": "success"
+    }
   },
   "releaseVerdict": "FIX-FIRST / MERGE NO",
   "sourceSummaryArtifact": {
     "path": "docs/reports/evidence/verification-summary.json",
     "status": "LOCAL_IGNORED",
-    "sizeBytes": 28094,
-    "sha256": "c0a58d5836783b331c2f0cf757e0ea78060239843836eb1aaa5016794366c815"
+    "sizeBytes": 51050,
+    "sha256": "1aaf7f7fef17dc25112a31a8fdfc34e202ee701fc9e46414d9e71d564ea8fd7f"
   },
   "sourceRawArtifacts": [
     {
       "path": "docs/reports/evidence/raw/ac-007-resize-5s.json",
-      "status": "FAIL",
-      "sizeBytes": 2111011,
-      "sha256": "914d13a6a6d50090d2a4f3eeb584fa4567dd287315e60124ed135ec3a20352ca"
+      "status": "PASS",
+      "sizeBytes": 2072052,
+      "sha256": "c161d0c2a220973d9e10134286da3dbc767022a019265735400cc5ed8f57fb1c"
     },
     {
       "path": "docs/reports/evidence/raw/ac-007-transform-5s.json",
       "status": "FAIL",
+      "provenance": "HISTORICAL_RETAINED_PRE_CALLBACK_RAW_NOT_REGENERATED_BY_CURRENT_SPEC",
       "sizeBytes": 660896,
       "sha256": "b5358a914bc94a72f729192e8c9197a2bc22c7ecb191bf97049b8bcd634d8961"
     },
     {
       "path": "docs/reports/evidence/raw/ac-007-transform-attributed-5s.json",
-      "status": "FAIL",
-      "sizeBytes": 2167084,
-      "sha256": "a8f87caf3196d79cdd8a166d07f52a3263d143818d07c64b0a7f7502202a0e49"
+      "status": "PASS",
+      "sizeBytes": 2170389,
+      "sha256": "39625aa7b545237f18b4959ac96870bccc3c7591e476a8dc18ab6994c386e7d1"
     },
     {
       "path": "docs/reports/evidence/raw/ac-007-transform-paired-history.json",
       "status": "FAIL",
-      "sizeBytes": 3367033,
-      "sha256": "f4c6e9a5af4f1849872c416511123127cfc829072c6e65e8a0612c86e8727050"
+      "sizeBytes": 3996990,
+      "sha256": "89d51adaf3994822295198d0b7b1a0ac62a7352f502cd4631031154c62b795f2"
+    },
+    {
+      "path": "docs/reports/evidence/raw/ac-008-five-commit-series.json",
+      "status": "PASS",
+      "sizeBytes": 1046698,
+      "sha256": "6144636842f6fee0b978c3781db4ea9f22f0b364af80d25ac6a64275973b5782"
     },
     {
       "path": "docs/reports/evidence/raw/ac-008-five-commit-series-attempt-1.json",
@@ -252,74 +329,28 @@
       "sha256": "3b24ccad2e84b2b0c2d504901ca7d4502ec36f11cd7d7ee8ffdf4ac4c175c497"
     },
     {
-      "path": "docs/reports/evidence/raw/ac-008-five-commit-series.json",
-      "status": "UNRESOLVED",
-      "sizeBytes": 1001695,
-      "sha256": "f0753fcfc9ea34829d2214d07347b662a1103e239154e288bee2793da4069c47"
-    },
-    {
       "path": "docs/reports/evidence/raw/ac-008-orbit-5s.json",
       "status": "UNRESOLVED",
-      "sizeBytes": 1441887,
-      "sha256": "345146717d8a5fbfebeb97534e81412678f88bd5afe17fd44e5d185a84c12afc"
+      "sizeBytes": 1479918,
+      "sha256": "0fa80d6ee50eea0e8af8e7ff94a85c4fee1d320ec26ce56bc48063ce47920845"
     },
     {
       "path": "docs/reports/evidence/raw/ac-019-preview-100-entity.json",
       "status": "PASS",
-      "sizeBytes": 3176843,
-      "sha256": "CFAAE79734E097DB364F92F0068D7B261E899D0B292EF6A84017C1FD31200446"
+      "sizeBytes": 3239724,
+      "sha256": "83f8a0d07a9480c1de0a241646e1c7a3a3b2f55ff877b0bb9ae61d8aabceccb6"
     },
     {
       "path": "docs/reports/evidence/raw/ac-022-browser-diagnostics.json",
       "status": "FAIL",
-      "sizeBytes": 8843,
-      "sha256": "551885b93535f4d8abff0843235c0765feb8c2bc3d6954886cfd626c954b9b7e"
+      "sizeBytes": 5502,
+      "sha256": "b0a1e313e2a15d466c1a8c2e3e16eca263409fc2b8a1272003dbc3b4fe9f3d5e"
     },
     {
       "path": "docs/reports/evidence/raw/ac-022-wsl-readonly.json",
       "status": "UNRESOLVED",
       "sizeBytes": 1379,
       "sha256": "2fb71850aca4de6f41fd98104ff5d2810b2cb22898760c80880710cca66b1462"
-    }
-  ],
-  "sourceTraceArtifacts": [
-    {
-      "path": "docs/reports/evidence/traces/ac-007-transform-cdp.attribution.json",
-      "status": "LOCAL_IGNORED",
-      "sizeBytes": 45814,
-      "sha256": "f405db07059d95506fd0a358f99686d30c7b51f84a72914a091c2b23f6c086e4"
-    },
-    {
-      "path": "docs/reports/evidence/traces/ac-007-transform-cdp.trace",
-      "status": "LOCAL_IGNORED",
-      "sizeBytes": 134546272,
-      "sha256": "f21aa86688dac2e65173235f4269be19afc7ce4ee2ec59ce2fdb71b28dbacf48"
-    }
-  ],
-  "sourceDiagnosticArtifacts": [
-    {
-      "path": "docs/reports/evidence/diagnostics/ac-007-resize-diagnostic-1-update.json",
-      "status": "PASS",
-      "sizeBytes": 2339631,
-      "sha256": "2742284b43eb29de1c8bf6ff95086527572c21a5d7cceea8606a7a672e2ebab7"
-    },
-    {
-      "path": "docs/reports/evidence/diagnostics/ac-007-resize-diagnostic-fine-grained.json",
-      "status": "PASS",
-      "sizeBytes": 238669,
-      "sha256": "5508502d60ad79139aac0e127556bce74992f1c525af8129632575defda79c8a"
-    },
-    {
-      "path": "docs/reports/evidence/diagnostics/ac-007-resize-diagnostic-fresh-1-update.json",
-      "status": "PASS",
-      "sizeBytes": 187598,
-      "sha256": "cf34dc8e1ffe9dfbe97e32d9c4fa60f3eb33b6ae94472267b911eb083732b9c8"
-    },
-    {
-      "path": "docs/reports/evidence/diagnostics/ac-007-resize-diagnostic-warmup.json",
-      "status": "PASS",
-      "sizeBytes": 2122493,
-      "sha256": "d7518315f16004917564a049fd893d85e8831bd4120f0d65e6dbce4835c715ef"
     }
   ]
 }
